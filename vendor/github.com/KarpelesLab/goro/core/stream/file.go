@@ -243,6 +243,9 @@ func (f *FileHandler) OpenFile(ctx phpv.Context, fname string, mode string, _ ..
 
 	res, err := os.OpenFile(fname, flags, 0666)
 	if err != nil {
+		if os.Getenv("OMPPHP_DEBUG_PATHS") != "" {
+			fmt.Fprintf(os.Stderr, "[goro] open %q resolved from %q failed: %v\n", fname, name, err)
+		}
 		return nil, err
 	}
 
