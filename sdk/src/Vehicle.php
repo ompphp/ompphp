@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Omp;
 
+use Omp\Value\Quaternion;
 use Omp\Value\Vector3;
+use Omp\Value\VehicleDamageStatus;
 
 final readonly class Vehicle
 {
@@ -33,6 +35,26 @@ final readonly class Vehicle
     public function setPosition(Vector3 $position): bool
     {
         return (bool) \Omp\Internal\vehicle_set_pos($this->id, $position->x, $position->y, $position->z);
+    }
+
+    public function position(): Vector3
+    {
+        return Vector3::fromNative(\Omp\Internal\vehicle_get_pos($this->id), 'Vehicle_GetPos');
+    }
+
+    public function velocity(): Vector3
+    {
+        return Vector3::fromNative(\Omp\Internal\vehicle_get_velocity($this->id), 'Vehicle_GetVelocity');
+    }
+
+    public function rotation(): Quaternion
+    {
+        return Quaternion::fromNative(\Omp\Internal\vehicle_get_rotation_quat($this->id), 'Vehicle_GetRotationQuat');
+    }
+
+    public function damageStatus(): VehicleDamageStatus
+    {
+        return VehicleDamageStatus::fromNative(\Omp\Internal\vehicle_get_damage_status($this->id));
     }
 
     public function repair(): bool

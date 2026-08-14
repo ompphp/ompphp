@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Omp;
 
+use Omp\Value\KeyState;
+use Omp\Value\Quaternion;
 use Omp\Value\Vector3;
 
 final readonly class Player
@@ -68,11 +70,22 @@ final readonly class Player
 
     public function position(): Vector3
     {
-        $position = \Omp\Internal\native_call('Player_GetPos', $this->id);
-        if (!is_array($position) || count($position) !== 3) {
-            throw new \UnexpectedValueException('Player_GetPos returned invalid position data.');
-        }
-        return new Vector3((float) $position[0], (float) $position[1], (float) $position[2]);
+        return Vector3::fromNative(\Omp\Internal\native_call('Player_GetPos', $this->id), 'Player_GetPos');
+    }
+
+    public function velocity(): Vector3
+    {
+        return Vector3::fromNative(\Omp\Internal\native_call('Player_GetVelocity', $this->id), 'Player_GetVelocity');
+    }
+
+    public function rotation(): Quaternion
+    {
+        return Quaternion::fromNative(\Omp\Internal\native_call('Player_GetRotationQuat', $this->id), 'Player_GetRotationQuat');
+    }
+
+    public function keyState(): KeyState
+    {
+        return KeyState::fromNative(\Omp\Internal\native_call('Player_GetKeys', $this->id));
     }
 
     public function sendMessage(string $message, int $colour = -1): bool

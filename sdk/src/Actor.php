@@ -35,6 +35,11 @@ final readonly class Actor
         return (bool) \Omp\Internal\actor_set_pos($this->id, $position->x, $position->y, $position->z);
     }
 
+    public function position(): Vector3
+    {
+        return Vector3::fromNative(\Omp\Internal\actor_get_pos($this->id), 'Actor_GetPos');
+    }
+
     public function destroy(): bool
     {
         return (bool) \Omp\Internal\actor_destroy($this->id);
