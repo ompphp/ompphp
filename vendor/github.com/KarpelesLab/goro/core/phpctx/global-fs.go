@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -131,7 +132,7 @@ func (g *Global) openForInclusion(ctx phpv.Context, fn phpv.ZString) (*stream.St
 		return nil, err
 	}
 	localFile := u.Scheme == "file" || u.Scheme == ""
-	if !localFile || filepath.IsAbs(u.Path) {
+	if !localFile || path.IsAbs(u.Path) || filepath.IsAbs(u.Path) {
 		return h.Open(ctx, u, "r")
 	}
 
