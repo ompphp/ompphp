@@ -1,53 +1,58 @@
 # ompphp
 
-`ompphp` lets you write open.mp gamemodes in PHP. It embeds [Goro](https://github.com/KarpelesLab/goro) in the server component, so PHP code runs in-process and a separate PHP installation is not needed on the production server.
+`ompphp` runs open.mp gamemodes written in PHP. It embeds [Goro](https://github.com/KarpelesLab/goro) in the server component, so production servers don't need a separate PHP installation.
 
-The PHP SDK covers the open.mp API and its events, with bindings generated from the official C API metadata.
+The PHP SDK exposes the open.mp API and events through bindings generated from the official C API metadata.
 
-## Installation
+## Requirements
 
-Download the component archive for your platform from the GitHub release, then copy the
-`ompphp.so` or `ompphp.dll` file from its `components` directory into your
-server's `components` directory. The open.mp `$CAPI` component must be installed
-alongside it.
+- A 64-bit Linux or Windows open.mp server
+- The open.mp `$CAPI` component
+- Composer on the development machine
 
-ompphp targets the 64-bit Linux and Windows server builds. It is not compatible
-with the older 32-bit releases.
+`ompphp` doesn't support older 32-bit server releases. The SDK targets PHP 8.2, the version provided by the pinned Goro revision.
 
-To build it yourself, clone the repository with its submodules and run the
-matching task:
+## Install the component
 
-```bash
+Download the component archive for your platform from the GitHub release. Copy `ompphp.so` or `ompphp.dll` from the archive's `components` directory into the server's `components` directory.
+
+To build the component from source:
+
+```sh
 git clone --recurse-submodules https://github.com/ompphp/ompphp.git
 cd ompphp
-task component          # Linux
-task component:windows  # Windows x64 cross-build from Linux
+task component          # Linux x64
+task component:windows  # Windows x64, cross-compiled from Linux
 ```
 
-Source builds are written to `build/`.
+Build output is written to `build/`.
 
-Download `ompphp-sdk_<version>.zip` from the same release into a `packages`
-directory in your gamemode project. Keep the archive intact and install it as a
-Composer artifact:
+## Install the SDK
 
-```bash
+Download `ompphp-sdk_<version>.zip` from the same release and keep the archive intact in your gamemode project's `packages` directory. Install it as a Composer artifact:
+
+```sh
 mkdir -p packages
 composer config repositories.ompphp artifact packages
 composer config platform.php 8.2.0
 composer require ompphp/sdk:^0.1
 ```
 
-Run Composer on your development machine, then deploy the gamemode together with its `vendor/` directory. By default, ompphp loads `gamemode.php` from the server directory. Set `OMPPHP_ENTRY` to use a different entry file.
+Run Composer on the development machine. Deploy the gamemode with its `vendor/` directory.
 
-## Small example
+Only require PHP extensions that Goro provides.
+
+## Usage
+
+Create `gamemode.php` in the server directory:
 
 ```php
 <?php
 
 require __DIR__ . '/vendor/autoload.php';
 
-use Omp\Player;
 use Omp\Event\Events;
+use Omp\Player;
 use Omp\Runtime;
 use Omp\Server;
 
@@ -58,11 +63,7 @@ Server::on(Events::PLAYER_CONNECT, static function (int $playerId): void {
 });
 ```
 
-Common open.mp values are available as grouped constants. For example,
-`WeaponID::M4` is `31`, while key flags can be combined with
-`Keys::FIRE | Keys::AIM`. The classes live in the `Omp\Constant` namespace.
-
-The complete native API is exposed as static methods grouped under `Omp\Api`:
+Native API methods are grouped under `Omp\Api`:
 
 ```php
 use Omp\Api\Dialog;
@@ -73,26 +74,53 @@ Player::setHealth($playerId, 100.0);
 Dialog::show($playerId, 1, DialogStyle::MSG_BOX, 'Hello', 'Welcome!', 'OK', '');
 ```
 
-See the `examples` directory for commands, dialogs, and a minimal gamemode.
+Common open.mp values are grouped under `Omp\Constant`. For example, `WeaponID::M4` is `31`, and key flags can be combined with `Keys::FIRE | Keys::AIM`.
 
-## Developer notes
+See [`examples`](examples) for commands, dialogs, and complete gamemodes.
 
-The open.mp API snapshot lives in `third_party/openmp-capi`. Curated gamemode
-values that are not part of CAPI metadata live in
-`tools/codegen/data/gamemode_constants.json`. Run `task generate` after updating
-either source, and commit the regenerated Go, C, and PHP bindings.
+## Configuration
 
-Use `task check` for the full Go and PHP test suite. `task e2e` builds the component, downloads a pinned x86-64 artifact from the open.mp build workflow, and starts a test server with the fixture gamemode. For a native-architecture diagnostic build, use `task component:host`.
-To test a different open.mp workflow run, set both `OPENMP_WORKFLOW_RUN` and
-`OPENMP_ARTIFACT_SHA256`; the download is rejected unless its checksum matches.
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OMPPHP_ENTRY` | `gamemode.php` | Gamemode entry file, relative to the server directory |
+| `OMPPHP_SLOW_CALLBACK_MS` | Disabled | Log callbacks that take at least this many milliseconds; set it to a positive number |
 
-Goro and its dependencies are pinned in `go.mod` and checked into `vendor/`. Goro currently assumes a Unix filesystem in several places, so the vendored copy contains a small portability layer used by the Windows build.
-The patch and upgrade procedure are documented in `docs/vendor-goro.md`.
+PHP runs in one long-lived, serialized Goro runtime. open.mp callbacks are synchronous, and PHP state persists between events.
 
-PHP execution is serialized through one long-lived Goro runtime. This is intentional: open.mp callbacks are synchronous, and PHP state must survive between events.
+The runtime tracks callback dispatches, failures, total execution time, and the longest callback internally.
 
-Set `OMPPHP_SLOW_CALLBACK_MS` to a positive number to log PHP callbacks that
-take at least that many milliseconds. The runtime also tracks dispatch count,
-failure count, total callback time, and the longest callback internally.
+## Development
 
-The SDK targets PHP 8.2 because that is the language version provided by the pinned Goro revision. Gamemode projects should set Composer's `config.platform.php` to `8.2.0` and only require extensions that Goro provides.
+Run the Go and PHP checks:
+
+```sh
+task check
+```
+
+Build and test the component in an official open.mp Linux server:
+
+```sh
+task e2e
+```
+
+The end-to-end test downloads a pinned x86-64 artifact from the open.mp build workflow. To test another workflow run, set both `OPENMP_WORKFLOW_RUN` and `OPENMP_ARTIFACT_SHA256`; the download fails if the checksum doesn't match.
+
+Use `task component:host` for a native-architecture diagnostic build.
+
+### Generated bindings
+
+The open.mp API snapshot is in `third_party/openmp-capi`. Curated gamemode values not included in the CAPI metadata are in `tools/codegen/data/gamemode_constants.json`.
+
+Regenerate the Go, C, and PHP bindings after changing either source:
+
+```sh
+task generate
+```
+
+Commit the generated files with the source changes.
+
+### Vendored Goro
+
+Goro and its dependencies are pinned in `go.mod` and checked into `vendor/`. The vendored copy includes a small portability layer because Goro assumes a Unix filesystem in several places.
+
+See [Updating vendored Goro](docs/vendor-goro.md) for the patch and upgrade process.
