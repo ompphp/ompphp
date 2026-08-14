@@ -41,15 +41,12 @@ try {
     }
     $sdkFunctions = Join-Path $serverDir 'vendor/ompphp/sdk/src/Internal/functions.php'
     if (!(Test-Path -LiteralPath $sdkFunctions -PathType Leaf)) {
-        Get-ChildItem (Join-Path $serverDir 'vendor/ompphp/sdk') -Recurse | Select-Object -ExpandProperty FullName
         throw "Composer did not install the SDK bootstrap file at $sdkFunctions"
     }
-    Write-Host "Verified installed SDK bootstrap: $((Resolve-Path -LiteralPath $sdkFunctions).Path)"
 
     $stdout = Join-Path $testDir 'stdout.log'
     $stderr = Join-Path $testDir 'stderr.log'
     $env:OMPPHP_ENTRY = 'gamemode.php'
-    $env:OMPPHP_DEBUG_PATHS = '1'
     $process = Start-Process -FilePath (Join-Path $serverDir 'omp-server.exe') -WorkingDirectory $serverDir -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
     Start-Sleep -Seconds 5
     if (!$process.HasExited) {

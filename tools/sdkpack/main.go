@@ -88,7 +88,10 @@ func packageSDK(version, outDir string) error {
 		if err != nil {
 			return failed(err)
 		}
-		name := filepath.ToSlash(strings.TrimPrefix(source, "sdk/"))
+		name, err := sdkArchivePath(source)
+		if err != nil {
+			return failed(err)
+		}
 		if err := writeArchiveFile(archive, name, data); err != nil {
 			return failed(err)
 		}
@@ -102,6 +105,14 @@ func packageSDK(version, outDir string) error {
 	}
 	fmt.Println(path)
 	return nil
+}
+
+func sdkArchivePath(source string) (string, error) {
+	relative, err := filepath.Rel("sdk", source)
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(relative), nil
 }
 
 func writeArchiveFile(archive *zip.Writer, name string, data []byte) error {

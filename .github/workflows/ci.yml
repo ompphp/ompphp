@@ -73,8 +73,8 @@ jobs:
           $env:GOARCH = 'amd64'
           $env:CC = Join-Path '${{ steps.msys2.outputs.msys2-location }}' 'mingw64\bin\gcc.exe'
           if (!(Test-Path $env:CC)) { throw "MinGW compiler not found at $env:CC" }
-          go test ./internal/runtime
-          if ($LASTEXITCODE -ne 0) { throw "Windows runtime tests failed with exit code $LASTEXITCODE" }
+          go test ./internal/runtime ./tools/sdkpack
+          if ($LASTEXITCODE -ne 0) { throw "Windows tests failed with exit code $LASTEXITCODE" }
           go build -mod=vendor -buildmode=c-shared -o build/ompphp.dll ./cmd/component
       - shell: pwsh
         run: ./tests/e2e-openmp.ps1
