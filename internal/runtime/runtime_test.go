@@ -168,12 +168,15 @@ func (l *recordingLogger) Printf(format string, arguments ...any) {
 
 func TestDispatchStatsAndSlowCallbackLogging(t *testing.T) {
 	logger := &recordingLogger{}
-	r := New(context.Background(), nil, logger)
+	r := New(context.Background(), native.Func(func(string, []any) (any, error) {
+		time.Sleep(5 * time.Millisecond)
+		return true, nil
+	}), logger)
 	t.Cleanup(r.Close)
-	if err := r.Load(script(t, `<?php namespace Omp\Internal; function dispatch($event, $args){ return true; }`)); err != nil {
+	if err := r.Load(script(t, `<?php namespace Omp\Internal; function dispatch($event, $args){ return \ompphp_native_call('Delay'); }`)); err != nil {
 		t.Fatal(err)
 	}
-	r.slow = time.Nanosecond
+	r.slow = time.Millisecond
 	if !r.Dispatch("PlayerConnect", 7) {
 		t.Fatal("dispatch failed")
 	}
