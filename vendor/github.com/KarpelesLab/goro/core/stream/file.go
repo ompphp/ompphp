@@ -91,11 +91,13 @@ func (a *appendFile) Sync() error {
 
 // TODO: remove cwd state here
 type FileHandler struct {
-	Cwd  string
-	Root string
+	Cwd        string
+	Root       string
+	allVolumes bool
 }
 
 func NewFileHandler(root string) (*FileHandler, error) {
+	allVolumes := os.PathSeparator == '\\' && filepath.ToSlash(root) == "/"
 	// make sure root is absolute
 	root, err := filepath.Abs(root)
 	if err != nil {
@@ -111,8 +113,9 @@ func NewFileHandler(root string) (*FileHandler, error) {
 	}
 
 	fh := &FileHandler{
-		Root: root,
-		Cwd:  "/",
+		Root:       root,
+		Cwd:        "/",
+		allVolumes: allVolumes,
 	}
 
 	// try to get current working directory if within root
@@ -146,7 +149,7 @@ func (f *FileHandler) localPath(name string) (string, string, error) {
 		// causing them to be appended to Root as if they were relative.
 		fname = filepath.Clean(name)
 		rel, err := filepath.Rel(f.Root, fname)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if !f.allVolumes && (err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
 			return "", "", os.ErrNotExist
 		}
 		name = path.Join("/", filepath.ToSlash(rel))
@@ -173,7 +176,7 @@ func (f *FileHandler) localPath(name string) (string, string, error) {
 	// Check containment by path components instead of a string prefix. Besides
 	// avoiding short-path panics, this handles Windows volumes and separators.
 	rel, err := filepath.Rel(f.Root, fname)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if !f.allVolumes && (err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
 		return "", "", os.ErrNotExist
 	}
 

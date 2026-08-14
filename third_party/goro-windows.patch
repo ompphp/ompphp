@@ -1257,7 +1257,35 @@
  	"syscall"
  
  	"github.com/KarpelesLab/goro/core/phpv"
-@@ -126,8 +127,11 @@ func NewFileHandler(root string) (*FileHandler, error) {
+@@ -90,11 +91,13 @@
+ 
+ // TODO: remove cwd state here
+ type FileHandler struct {
+-	Cwd  string
+-	Root string
++	Cwd        string
++	Root       string
++	allVolumes bool
+ }
+ 
+ func NewFileHandler(root string) (*FileHandler, error) {
++	allVolumes := os.PathSeparator == '\\' && filepath.ToSlash(root) == "/"
+ 	// make sure root is absolute
+ 	root, err := filepath.Abs(root)
+ 	if err != nil {
+@@ -110,8 +113,9 @@ func NewFileHandler(root string) (*FileHandler, error) {
+ 	}
+ 
+ 	fh := &FileHandler{
+-		Root: root,
+-		Cwd:  "/",
++		Root:       root,
++		Cwd:        "/",
++		allVolumes: allVolumes,
+ 	}
+ 
+ 	// try to get current working directory if within root
+@@ -126,8 +130,11 @@ func NewFileHandler(root string) (*FileHandler, error) {
  	}
  
  	if len(wd) >= len(root) && wd[:len(root)] == root {
@@ -1271,7 +1299,7 @@
  		fh.Cwd = localwd
  	}
  
-@@ -135,13 +139,25 @@ func (f *FileHandler) localPath(name string) (string, string, error) {
+@@ -135,13 +142,25 @@ func (f *FileHandler) localPath(name string) (string, string, error) {
  }
  
  func (f *FileHandler) localPath(name string) (string, string, error) {
@@ -1284,7 +1312,7 @@
 +		// causing them to be appended to Root as if they were relative.
 +		fname = filepath.Clean(name)
 +		rel, err := filepath.Rel(f.Root, fname)
-+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
++		if !f.allVolumes && (err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
 +			return "", "", os.ErrNotExist
 +		}
 +		name = path.Join("/", filepath.ToSlash(rel))
@@ -1303,7 +1331,7 @@
  
  	// resolve symlinks
  	fname2, err := filepath.EvalSymlinks(fname)
-@@ -154,9 +170,10 @@ func (f *FileHandler) localPath(name string) (string, string, error) {
+@@ -154,9 +173,10 @@ func (f *FileHandler) localPath(name string) (string, string, error) {
  		fname = fname2
  	}
  
@@ -1313,11 +1341,11 @@
 +	// Check containment by path components instead of a string prefix. Besides
 +	// avoiding short-path panics, this handles Windows volumes and separators.
 +	rel, err := filepath.Rel(f.Root, fname)
-+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
++	if !f.allVolumes && (err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
  		return "", "", os.ErrNotExist
  	}
  
-@@ -242,7 +259,13 @@ func (f *FileHandler) OpenFile(ctx phpv.Context, fname string, mode string, _ ..
+@@ -242,7 +262,13 @@ func (f *FileHandler) OpenFile(ctx phpv.Context, fname string, mode string, _ ..
  	s.SetAttr("mode", mode)
  	s.SetAttr("flag", flag)
  	s.SetAttr("seekable", true)
