@@ -19,7 +19,6 @@ jobs:
         with:
           php-version: '8.5'
           tools: composer
-      - run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
       - run: test -z "$(gofmt -l cmd internal tools)"
       - run: go vet ./...
       - run: composer install --working-dir=sdk --no-interaction --no-progress
@@ -30,7 +29,6 @@ jobs:
       - run: git diff --exit-code -- sdk/src/Internal/api_generated.php sdk/src/Api sdk/src/Event/Events.php sdk/src/Constant cmd/component/native_generated.go cmd/component/native_generated.h cmd/component/events_generated.go cmd/component/events_generated.h
       - run: go test -race -short -timeout=3m ./...
       - run: GOARCH=amd64 CGO_ENABLED=1 go build -mod=vendor -buildmode=c-shared -o build/ompphp.so ./cmd/component
-      - run: GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc go build -mod=vendor -buildmode=c-shared -o build/ompphp.dll ./cmd/component
       - run: ./tests/e2e-openmp.sh --skip-build
 
   windows-e2e:

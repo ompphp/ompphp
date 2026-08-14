@@ -7,7 +7,8 @@ $testDir = Join-Path ([System.IO.Path]::GetTempPath()) ("ompphp-e2e-" + [guid]::
 New-Item -ItemType Directory -Path $testDir | Out-Null
 
 try {
-    Invoke-WebRequest -Uri $artifactUrl -OutFile (Join-Path $testDir 'artifact.zip')
+    Write-Host 'Downloading pinned open.mp Windows x64 artifact'
+    Invoke-WebRequest -Uri $artifactUrl -OutFile (Join-Path $testDir 'artifact.zip') -TimeoutSec 180
     $actualSha256 = (Get-FileHash (Join-Path $testDir 'artifact.zip') -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actualSha256 -ne $artifactSha256.ToLowerInvariant()) {
         throw "open.mp artifact checksum mismatch: expected $artifactSha256, got $actualSha256"

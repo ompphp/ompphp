@@ -16,7 +16,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-curl --fail --location --silent --show-error "${artifact_url}" --output "${test_dir}/openmp.zip"
+echo "Downloading pinned open.mp Linux x86-64 artifact"
+curl --fail --location --show-error --progress-bar \
+    --connect-timeout 15 --max-time 180 --retry 3 --retry-all-errors \
+    "${artifact_url}" --output "${test_dir}/openmp.zip"
 printf '%s  %s\n' "${artifact_sha256}" "${test_dir}/openmp.zip" | sha256sum --check --status
 unzip -q "${test_dir}/openmp.zip" -d "${test_dir}"
 tar -xJf "${test_dir}/open.mp-linux-x86_64-.tar.xz" -C "${test_dir}"
