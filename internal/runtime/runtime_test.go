@@ -365,6 +365,70 @@ func TestArrayCrossesNativeBoundary(t *testing.T) {
 	}
 }
 
+func TestNativeBoundaryRejectsUnsupportedValues(t *testing.T) {
+	t.Run("native name", func(t *testing.T) {
+		called := false
+		r := New(context.Background(), native.Func(func(string, []any) (any, error) {
+			called = true
+			return true, nil
+		}), nil)
+		t.Cleanup(r.Close)
+		err := r.Load(script(t, `<?php ompphp_native_call(123);`))
+		if err == nil || !strings.Contains(err.Error(), "native function name must be a string, got int") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if called {
+			t.Fatal("gateway was called with an invalid native name")
+		}
+	})
+
+	t.Run("PHP argument", func(t *testing.T) {
+		called := false
+		r := New(context.Background(), native.Func(func(string, []any) (any, error) {
+			called = true
+			return true, nil
+		}), nil)
+		t.Cleanup(r.Close)
+		err := r.Load(script(t, `<?php ompphp_native_call('ObjectArgument', new \stdClass());`))
+		if err == nil || !strings.Contains(err.Error(), "ObjectArgument argument 1: unsupported PHP value type object") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if called {
+			t.Fatal("gateway was called with an unsupported PHP value")
+		}
+	})
+
+	t.Run("Go result", func(t *testing.T) {
+		r := New(context.Background(), native.Func(func(string, []any) (any, error) {
+			return struct{}{}, nil
+		}), nil)
+		t.Cleanup(r.Close)
+		err := r.Load(script(t, `<?php ompphp_native_call('InvalidResult');`))
+		if err == nil || !strings.Contains(err.Error(), "InvalidResult result: unsupported Go value type struct {}") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestDispatchRejectsUnsupportedEventArguments(t *testing.T) {
+	logger := &recordingLogger{}
+	r := New(context.Background(), nil, logger)
+	t.Cleanup(r.Close)
+	if err := r.Load(script(t, `<?php namespace Omp\Internal; function dispatch($event, $args, $default) { return !$default; }`)); err != nil {
+		t.Fatal(err)
+	}
+	if !r.DispatchDefault("Invalid", true, struct{}{}) {
+		t.Fatal("unsupported event argument did not use the event default")
+	}
+	stats := r.Stats()
+	if stats.Dispatches != 1 || stats.Failures != 1 {
+		t.Fatalf("unexpected stats: %#v", stats)
+	}
+	if len(logger.messages) != 1 || !strings.Contains(logger.messages[0], "unsupported Go value type struct {}") {
+		t.Fatalf("unexpected log messages: %#v", logger.messages)
+	}
+}
+
 func TestComposerCompatibilityMatrix(t *testing.T) {
 	_, file, _, ok := goruntime.Caller(0)
 	if !ok {

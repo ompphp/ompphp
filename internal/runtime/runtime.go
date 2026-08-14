@@ -108,8 +108,16 @@ func (r *Runtime) DispatchDefault(event string, defaultResult bool, arguments ..
 		return defaultResult
 	}
 	values := phpv.NewZArray()
-	for _, argument := range arguments {
-		_ = values.OffsetSet(r.global, nil, toPHP(argument))
+	for index, argument := range arguments {
+		converted, err := toPHP(argument)
+		if err != nil {
+			r.stats.Failures++
+			if r.logger != nil {
+				r.logger.Printf("PHP event %s argument %d: %v", event, index+1, err)
+			}
+			return defaultResult
+		}
+		_ = values.OffsetSet(r.global, nil, converted)
 	}
 	args := []*phpv.ZVal{phpv.ZString(event).ZVal(), values.ZVal(), phpv.ZBool(defaultResult).ZVal()}
 	value, err := fn.Call(r.global, args)
@@ -154,55 +162,65 @@ func (r *Runtime) Close() {
 	r.closed = true
 }
 
-func toPHP(value any) *phpv.ZVal {
+func toPHP(value any) (*phpv.ZVal, error) {
 	switch v := value.(type) {
 	case nil:
-		return phpv.ZNULL.ZVal()
+		return phpv.ZNULL.ZVal(), nil
 	case bool:
-		return phpv.ZBool(v).ZVal()
+		return phpv.ZBool(v).ZVal(), nil
 	case int:
-		return phpv.ZInt(v).ZVal()
+		return phpv.ZInt(v).ZVal(), nil
 	case int32:
-		return phpv.ZInt(v).ZVal()
+		return phpv.ZInt(v).ZVal(), nil
 	case int64:
-		return phpv.ZInt(v).ZVal()
+		return phpv.ZInt(v).ZVal(), nil
 	case float32:
-		return phpv.ZFloat(v).ZVal()
+		return phpv.ZFloat(v).ZVal(), nil
 	case float64:
-		return phpv.ZFloat(v).ZVal()
+		return phpv.ZFloat(v).ZVal(), nil
 	case string:
-		return phpv.ZString(v).ZVal()
+		return phpv.ZString(v).ZVal(), nil
 	case []any:
 		array := phpv.NewZArray()
-		for _, item := range v {
-			_ = array.OffsetSet(nil, nil, toPHP(item))
+		for index, item := range v {
+			converted, err := toPHP(item)
+			if err != nil {
+				return nil, fmt.Errorf("array item %d: %w", index, err)
+			}
+			_ = array.OffsetSet(nil, nil, converted)
 		}
-		return array.ZVal()
+		return array.ZVal(), nil
 	default:
-		return phpv.ZString(fmt.Sprint(v)).ZVal()
+		return nil, fmt.Errorf("unsupported Go value type %T", value)
 	}
 }
 
-func fromPHP(ctx phpv.Context, value *phpv.ZVal) any {
+func fromPHP(ctx phpv.Context, value *phpv.ZVal) (any, error) {
 	switch value.GetType() {
 	case phpv.ZtNull:
-		return nil
+		return nil, nil
 	case phpv.ZtBool:
-		return bool(value.AsBool(ctx))
+		return bool(value.AsBool(ctx)), nil
 	case phpv.ZtInt:
-		return int64(value.AsInt(ctx))
+		return int64(value.AsInt(ctx)), nil
 	case phpv.ZtFloat:
-		return float64(value.AsFloat(ctx))
+		return float64(value.AsFloat(ctx)), nil
 	case phpv.ZtString:
-		return string(value.AsString(ctx))
+		return string(value.AsString(ctx)), nil
 	case phpv.ZtArray:
 		array := value.AsArray(ctx)
 		result := make([]any, 0, int(array.Count(ctx)))
+		index := 0
 		for _, item := range array.Iterate(ctx) {
-			result = append(result, fromPHP(ctx, item))
+			converted, err := fromPHP(ctx, item)
+			if err != nil {
+				return nil, fmt.Errorf("array item %d: %w", index, err)
+			}
+			result = append(result, converted)
+			index++
 		}
-		return result
+		return result, nil
 	default:
-		return string(value.AsString(ctx))
+		return nil, fmt.Errorf("unsupported PHP value type %s", value.GetType().TypeName())
 	}
 }

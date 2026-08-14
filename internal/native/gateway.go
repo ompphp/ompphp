@@ -8,6 +8,8 @@ import (
 var ErrUnavailable = errors.New("open.mp native API is not available")
 
 // Gateway is the narrow boundary implemented by the generated C API bridge.
+// Arguments and results may contain nil, bool, int, int32, int64, float32,
+// float64, string, and recursively nested []any values.
 type Gateway interface {
 	Call(name string, arguments []any) (any, error)
 }

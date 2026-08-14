@@ -79,7 +79,7 @@ tasks:
     cmds:
       - for example in examples/*/composer.json; do composer validate --strict "$example"; done
       - for example in examples/*/composer.json; do composer install --working-dir="$(dirname "$example")" --no-interaction --no-progress; done
-      - for gamemode in examples/*/gamemode.php; do php -l "$gamemode"; done
+      - find examples -path '*/vendor' -prune -o -name '*.php' -exec php -l {} \;
 
   test:
     deps: [generate]

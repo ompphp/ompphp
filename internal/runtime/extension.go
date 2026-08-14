@@ -24,10 +24,17 @@ func apiVersion(phpv.Context, []*phpv.ZVal) (*phpv.ZVal, error) {
 }
 
 func nativeCall(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	if args[0].GetType() != phpv.ZtString {
+		return nil, fmt.Errorf("native function name must be a string, got %s", args[0].GetType().TypeName())
+	}
 	name := string(args[0].AsString(ctx))
 	values := make([]any, 0, len(args)-1)
-	for _, arg := range args[1:] {
-		values = append(values, fromPHP(ctx, arg))
+	for index, arg := range args[1:] {
+		value, err := fromPHP(ctx, arg)
+		if err != nil {
+			return nil, fmt.Errorf("%s argument %d: %w", name, index+1, err)
+		}
+		values = append(values, value)
 	}
 	gateway, ok := ctx.Global().State(gatewayStateKey).(native.Gateway)
 	if !ok || gateway == nil {
@@ -37,5 +44,9 @@ func nativeCall(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
-	return toPHP(result), nil
+	converted, err := toPHP(result)
+	if err != nil {
+		return nil, fmt.Errorf("%s result: %w", name, err)
+	}
+	return converted, nil
 }
