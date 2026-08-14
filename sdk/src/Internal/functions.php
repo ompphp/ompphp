@@ -60,10 +60,16 @@ function install_composer_compatibility_loader(): void
 
 install_composer_compatibility_loader();
 
+final class HandlerRegistry
+{
+    /** @var array<string, list<callable>> */
+    public static array $handlers = [];
+}
+
 /** @phpstan-impure */
 function register_handler(string $event, callable $handler): void
 {
-    $GLOBALS['__ompphp_handlers'][$event][] = $handler;
+    HandlerRegistry::$handlers[$event][] = $handler;
 }
 
 function format_handler_failure(string $event, \Throwable $error): string
@@ -75,11 +81,11 @@ if (!function_exists(__NAMESPACE__ . '\\dispatch')) {
     /** @param list<mixed> $arguments */
     function dispatch(string $event, array $arguments = []): ?bool
     {
-        if (!isset($GLOBALS['__ompphp_handlers'][$event])) {
+        if (!isset(HandlerRegistry::$handlers[$event])) {
             return null;
         }
         $result = true;
-        foreach ($GLOBALS['__ompphp_handlers'][$event] as $handler) {
+        foreach (HandlerRegistry::$handlers[$event] as $handler) {
             try {
                 $value = $handler(...$arguments);
             } catch (\Throwable $error) {

@@ -39,6 +39,10 @@ func generatePHP(path string, m model.Model) error {
 		} else if function.Name == "NPC_GetAll" {
 			out.WriteString("/** @return list<int> */\n")
 			returnType = "array"
+		} else if len(outputs) == 1 {
+			returnType = phpType(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(outputs[0].Type), "*")))
+		} else {
+			returnType = phpType(function.ReturnType)
 		}
 		fmt.Fprintf(&out, "function %s(", snake(function.Name))
 		inputIndex := 0
@@ -77,7 +81,14 @@ func generatePHP(path string, m model.Model) error {
 		} else if function.Name == "NPC_GetAll" {
 			fmt.Fprintf(&out, "    $result = %s;\n", call.String())
 			out.WriteString("    if (!is_array($result)) {\n        throw new \\UnexpectedValueException('NPC_GetAll returned invalid output data.');\n    }\n")
-			out.WriteString("    return array_values(array_map(static fn (mixed $value): int => (int) $value, $result));\n")
+			out.WriteString("    $npcs = [];\n    foreach ($result as $value) {\n        if (!is_int($value)) {\n            throw new \\UnexpectedValueException('NPC_GetAll returned invalid NPC data.');\n        }\n        $npcs[] = $value;\n    }\n    return $npcs;\n")
+		} else if returnType == "void" {
+			fmt.Fprintf(&out, "    %s;\n", call.String())
+		} else if returnType == "bool" || returnType == "int" || returnType == "float" || returnType == "string" {
+			fmt.Fprintf(&out, "    $result = %s;\n", call.String())
+			fmt.Fprintf(&out, "    if (!is_%s($result)) {\n", phpTypeCheck(returnType))
+			fmt.Fprintf(&out, "        throw new \\UnexpectedValueException('%s returned invalid %s data.');\n", function.Name, returnType)
+			out.WriteString("    }\n    return $result;\n")
 		} else {
 			fmt.Fprintf(&out, "    return %s;\n", call.String())
 		}
@@ -90,6 +101,13 @@ func generatePHP(path string, m model.Model) error {
 		return fmt.Errorf("write generated PHP API: %w", err)
 	}
 	return nil
+}
+
+func phpTypeCheck(phpType string) string {
+	if phpType == "float" {
+		return "float"
+	}
+	return phpType
 }
 
 func generateEvents(path string, m model.Model) error {

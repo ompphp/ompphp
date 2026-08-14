@@ -10,7 +10,7 @@ import (
 )
 
 func TestGeneratePHPIsDeterministic(t *testing.T) {
-	m := model.Model{Functions: []model.Function{{Name: "Player_SetHealth", Parameters: []model.Parameter{{Name: "player", Type: "void*"}, {Name: "health", Type: "float"}}}}}
+	m := model.Model{Functions: []model.Function{{Name: "Player_SetHealth", ReturnType: "bool", Parameters: []model.Parameter{{Name: "player", Type: "void*"}, {Name: "health", Type: "float"}}}}}
 	path := filepath.Join(t.TempDir(), "api.php")
 	if err := generatePHP(path, m); err != nil {
 		t.Fatal(err)
@@ -29,7 +29,8 @@ func TestGeneratePHPIsDeterministic(t *testing.T) {
 	if string(first) != string(second) {
 		t.Fatal("generation is not deterministic")
 	}
-	if !strings.Contains(string(first), "function player_set_health(int $player, float $health): mixed") {
+	if !strings.Contains(string(first), "function player_set_health(int $player, float $health): bool") ||
+		!strings.Contains(string(first), "if (!is_bool($result))") {
 		t.Fatalf("unexpected output:\n%s", first)
 	}
 }

@@ -14,53 +14,52 @@ final readonly class Player
 
     public function setHealth(float $health): bool
     {
-        return (bool) \Omp\Internal\native_call('Player_SetHealth', $this->id, $health);
+        return \Omp\Internal\player_set_health($this->id, $health);
     }
 
     public function health(): float
     {
-        return (float) \Omp\Internal\native_call('Player_GetHealth', $this->id);
+        return \Omp\Internal\player_get_health($this->id);
     }
 
     public function setArmor(float $armor): bool
     {
-        return (bool) \Omp\Internal\native_call('Player_SetArmor', $this->id, $armor);
+        return \Omp\Internal\player_set_armor($this->id, $armor);
     }
 
     public function armor(): float
     {
-        return (float) \Omp\Internal\native_call('Player_GetArmor', $this->id);
+        return \Omp\Internal\player_get_armor($this->id);
     }
 
     public function setScore(int $score): bool
     {
-        return (bool) \Omp\Internal\native_call('Player_SetScore', $this->id, $score);
+        return \Omp\Internal\player_set_score($this->id, $score);
     }
 
     public function score(): int
     {
-        return (int) \Omp\Internal\native_call('Player_GetScore', $this->id);
+        return \Omp\Internal\player_get_score($this->id);
     }
 
     public function giveMoney(int $amount): bool
     {
-        return (bool) \Omp\Internal\native_call('Player_GiveMoney', $this->id, $amount);
+        return \Omp\Internal\player_give_money($this->id, $amount);
     }
 
     public function money(): int
     {
-        return (int) \Omp\Internal\native_call('Player_GetMoney', $this->id);
+        return \Omp\Internal\player_get_money($this->id);
     }
 
     public function kick(): bool
     {
-        return (bool) \Omp\Internal\native_call('Player_Kick', $this->id);
+        return \Omp\Internal\player_kick($this->id);
     }
 
     public function setPosition(Vector3 $position): bool
     {
-        return (bool) \Omp\Internal\native_call(
-            'Player_SetPos',
+        return \Omp\Internal\player_set_pos(
             $this->id,
             $position->x,
             $position->y,
@@ -70,18 +69,17 @@ final readonly class Player
 
     public function position(): Vector3
     {
-        return Vector3::fromNative(\Omp\Internal\native_call('Player_GetPos', $this->id), 'Player_GetPos');
+        return Vector3::fromNative(\Omp\Internal\player_get_pos($this->id), 'Player_GetPos');
     }
 
     public function velocity(): Vector3
     {
-        return Vector3::fromNative(\Omp\Internal\native_call('Player_GetVelocity', $this->id), 'Player_GetVelocity');
+        return Vector3::fromNative(\Omp\Internal\player_get_velocity($this->id), 'Player_GetVelocity');
     }
 
     public function setVelocity(Vector3 $velocity): bool
     {
-        return (bool) \Omp\Internal\native_call(
-            'Player_SetVelocity',
+        return \Omp\Internal\player_set_velocity(
             $this->id,
             $velocity->x,
             $velocity->y,
@@ -91,16 +89,16 @@ final readonly class Player
 
     public function rotation(): Quaternion
     {
-        return Quaternion::fromNative(\Omp\Internal\native_call('Player_GetRotationQuat', $this->id), 'Player_GetRotationQuat');
+        return Quaternion::fromNative(\Omp\Internal\player_get_rotation_quat($this->id), 'Player_GetRotationQuat');
     }
 
     public function keyState(): KeyState
     {
-        return KeyState::fromNative(\Omp\Internal\native_call('Player_GetKeys', $this->id));
+        return KeyState::fromNative(\Omp\Internal\player_get_keys($this->id));
     }
 
     public function sendMessage(string $message, int $colour = -1): bool
     {
-        return (bool) \Omp\Internal\native_call('Player_SendClientMessage', $this->id, $colour, $message);
+        return \Omp\Internal\player_send_client_message($this->id, $colour, $message);
     }
 }

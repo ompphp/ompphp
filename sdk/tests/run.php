@@ -13,6 +13,7 @@ final class NativeStub
 {
     /** @var list<array{string, list<mixed>}> */
     public static array $calls = [];
+    public static bool $invalidScore = false;
 }
 
 /** @param list<mixed> $arguments */
@@ -28,6 +29,9 @@ function expectLastNativeCall(string $name, array $arguments): void
 function ompphp_native_call(string $name, mixed ...$arguments): mixed
 {
     NativeStub::$calls[] = [$name, array_values($arguments)];
+    if ($name === 'Player_GetScore' && NativeStub::$invalidScore) {
+        return 'invalid';
+    }
     return match ($name) {
         'Player_GetHealth', 'Player_GetArmor' => 75.5,
         'Player_GetScore', 'Player_GetMoney' => 123,
@@ -91,6 +95,15 @@ expect($player->setArmor(50.0));
 expect($player->armor() === 75.5);
 expect($player->setScore(10));
 expect($player->score() === 123);
+NativeStub::$invalidScore = true;
+try {
+    $player->score();
+    throw new RuntimeException('Invalid scalar data was accepted.');
+} catch (UnexpectedValueException $error) {
+    expect($error->getMessage() === 'Player_GetScore returned invalid int data.');
+} finally {
+    NativeStub::$invalidScore = false;
+}
 expect($player->giveMoney(500));
 expect($player->money() === 123);
 expect($player->kick());
