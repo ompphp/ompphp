@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/KarpelesLab/goro/core/phpv"
@@ -126,8 +127,11 @@ func NewFileHandler(root string) (*FileHandler, error) {
 	}
 
 	if len(wd) >= len(root) && wd[:len(root)] == root {
-		localwd := filepath.Join("/", filepath.ToSlash(wd[len(root):]))
-		localwd = filepath.Clean(localwd)
+		// Cwd is a path inside the virtual file root. Keep it slash-separated;
+		// filepath.Clean would turn it into a Windows path and later make the
+		// stream resolver confuse it with a host path.
+		localwd := path.Join("/", filepath.ToSlash(wd[len(root):]))
+		localwd = path.Clean(localwd)
 		fh.Cwd = localwd
 	}
 
@@ -135,13 +139,25 @@ func NewFileHandler(root string) (*FileHandler, error) {
 }
 
 func (f *FileHandler) localPath(name string) (string, string, error) {
-	if !path.IsAbs(name) {
-		name = path.Join(f.Cwd, name)
+	var fname string
+	if filepath.IsAbs(name) {
+		// Inclusion lookup can pass a host-absolute path. On Windows, path.IsAbs
+		// does not recognise drive-qualified paths such as C:\\game\\main.php,
+		// causing them to be appended to Root as if they were relative.
+		fname = filepath.Clean(name)
+		rel, err := filepath.Rel(f.Root, fname)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return "", "", os.ErrNotExist
+		}
+		name = path.Join("/", filepath.ToSlash(rel))
+	} else {
+		name = filepath.ToSlash(name)
+		if !path.IsAbs(name) {
+			name = path.Join(f.Cwd, name)
+		}
+		name = path.Clean(name)
+		fname = filepath.Join(f.Root, filepath.FromSlash(strings.TrimPrefix(name, "/")))
 	}
-	name = path.Clean(name)
-
-	// go to fname
-	fname := filepath.Join(f.Root, filepath.FromSlash(name))
 
 	// resolve symlinks
 	fname2, err := filepath.EvalSymlinks(fname)
@@ -154,9 +170,10 @@ func (f *FileHandler) localPath(name string) (string, string, error) {
 		fname = fname2
 	}
 
-	// check if OK
-	if fname[:len(f.Root)] != f.Root {
-		// not ok
+	// Check containment by path components instead of a string prefix. Besides
+	// avoiding short-path panics, this handles Windows volumes and separators.
+	rel, err := filepath.Rel(f.Root, fname)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", "", os.ErrNotExist
 	}
 

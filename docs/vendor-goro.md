@@ -4,7 +4,9 @@ ompphp vendors Goro because the component must build reproducibly and because
 the pinned revision needs a small portability layer for Windows.
 
 The local changes replace direct Unix `syscall` assumptions in the standard and
-SPL extensions with build-tagged Unix and Windows implementations. Windows uses
+SPL extensions with build-tagged Unix and Windows implementations. They also
+keep Goro's virtual file paths separate from Windows drive-qualified paths so
+relative includes resolve from the server's working directory. Windows uses
 Win32 file-time and disk-space APIs where equivalents exist. Unsupported Unix
 operations such as syslog and process priority return the same kind of failure a
 PHP caller would receive for an unavailable platform feature.
@@ -16,7 +18,8 @@ repository root:
 ```bash
 go mod vendor
 patch -p1 < third_party/goro-windows.patch
-gofmt -w vendor/github.com/KarpelesLab/goro/ext/standard \
+gofmt -w vendor/github.com/KarpelesLab/goro/core/stream \
+  vendor/github.com/KarpelesLab/goro/ext/standard \
   vendor/github.com/KarpelesLab/goro/ext/spl
 task check
 task component
