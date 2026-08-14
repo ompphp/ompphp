@@ -119,12 +119,12 @@ function format_handler_failure(string $event, \Throwable $error): string
 
 if (!function_exists(__NAMESPACE__ . '\\dispatch')) {
     /** @param list<mixed> $arguments */
-    function dispatch(string $event, array $arguments = []): ?bool
+    function dispatch(string $event, array $arguments = [], bool $defaultResult = true): ?bool
     {
         if (!isset(HandlerRegistry::$handlers[$event])) {
             return null;
         }
-        $result = true;
+        $result = $defaultResult;
         foreach (HandlerRegistry::$handlers[$event] as $handler) {
             try {
                 $value = $handler(...$arguments);

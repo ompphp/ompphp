@@ -75,6 +75,9 @@ expect(Server::dispatch('PlayerConnect', 4) === false);
 expect($calls === 4);
 expect(Server::dispatch('Unknown') === true);
 
+Server::on('NoOpinion', static function (): void {});
+expect(\Omp\Internal\dispatch('NoOpinion', [], false) === false);
+
 Server::on('Broken', static function (): void {
     throw new RuntimeException('expected test failure');
 });

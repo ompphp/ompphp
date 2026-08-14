@@ -245,6 +245,7 @@ require %q;
 require %q;
 require %q;
 \Omp\Server::on('PlayerConnect', static fn(int $id): bool => $id === 42);
+\Omp\Server::on('NoOpinion', static function (): void {});
 `, filepath.Join(sdk, "Server.php"), filepath.Join(sdk, "Internal", "functions.php"), filepath.Join(sdk, "Event", "Events.php"))
 	if err := r.Load(script(t, entry)); err != nil {
 		t.Fatal(err)
@@ -257,6 +258,9 @@ require %q;
 	}
 	if r.DispatchDefault("Unregistered", false) {
 		t.Fatal("unregistered event ignored metadata default")
+	}
+	if r.DispatchDefault("NoOpinion", false) {
+		t.Fatal("non-boolean handler ignored metadata default")
 	}
 }
 

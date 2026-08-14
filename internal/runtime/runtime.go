@@ -110,7 +110,7 @@ func (r *Runtime) DispatchDefault(event string, defaultResult bool, arguments ..
 	for _, argument := range arguments {
 		_ = values.OffsetSet(r.global, nil, toPHP(argument))
 	}
-	args := []*phpv.ZVal{phpv.ZString(event).ZVal(), values.ZVal()}
+	args := []*phpv.ZVal{phpv.ZString(event).ZVal(), values.ZVal(), phpv.ZBool(defaultResult).ZVal()}
 	value, err := fn.Call(r.global, args)
 	if err != nil {
 		r.stats.Failures++
