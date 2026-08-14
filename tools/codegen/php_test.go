@@ -104,7 +104,8 @@ func TestGeneratePHPExcludesOutputParameters(t *testing.T) {
 	if !strings.Contains(string(data), "/** @return array{float, float, float} */") ||
 		!strings.Contains(string(data), "function player_get_pos(int $player): array") ||
 		!strings.Contains(string(data), "count($result) !== 3") ||
-		!strings.Contains(string(data), "return [(float) $result[0], (float) $result[1], (float) $result[2]]") {
+		!strings.Contains(string(data), "if (!is_float($result[0]))") ||
+		!strings.Contains(string(data), "return [$result[0], $result[1], $result[2]]") {
 		t.Fatalf("unexpected output:\n%s", data)
 	}
 }

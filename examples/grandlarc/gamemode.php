@@ -303,4 +303,29 @@ final class GrandLarceny
     }
 }
 
-(new GrandLarceny(require __DIR__ . '/spawns.php'))->start();
+/** @return array<string, list<array{float, float, float, float}>> */
+function loadSpawns(string $path): array
+{
+    $data = require $path;
+    if (!is_array($data)) {
+        throw new UnexpectedValueException("Spawn data at {$path} must return an array.");
+    }
+    $spawns = [];
+    foreach ($data as $area => $locations) {
+        if (!is_string($area) || !is_array($locations)) {
+            throw new UnexpectedValueException("Spawn data at {$path} is invalid.");
+        }
+        $spawns[$area] = [];
+        foreach ($locations as $location) {
+            if (!is_array($location) || !array_is_list($location) || count($location) !== 4
+                || !is_float($location[0]) || !is_float($location[1])
+                || !is_float($location[2]) || !is_float($location[3])) {
+                throw new UnexpectedValueException("Spawn data at {$path} contains an invalid location.");
+            }
+            $spawns[$area][] = [$location[0], $location[1], $location[2], $location[3]];
+        }
+    }
+    return $spawns;
+}
+
+(new GrandLarceny(loadSpawns(__DIR__ . '/spawns.php')))->start();

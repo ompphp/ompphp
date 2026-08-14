@@ -19,10 +19,17 @@ final readonly class KeyState
 
     public static function fromNative(mixed $value): self
     {
-        if (!is_array($value) || !array_is_list($value) || count($value) !== 3) {
+        if (
+            !is_array($value)
+            || !array_is_list($value)
+            || count($value) !== 3
+            || !is_int($value[0])
+            || !is_int($value[1])
+            || !is_int($value[2])
+        ) {
             throw new \UnexpectedValueException('Player_GetKeys returned invalid key state data.');
         }
 
-        return new self((int) $value[0], (int) $value[1], (int) $value[2]);
+        return new self($value[0], $value[1], $value[2]);
     }
 }

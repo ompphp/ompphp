@@ -15,7 +15,15 @@ final readonly class Quaternion
 
     public static function fromNative(mixed $value, string $operation): self
     {
-        if (!is_array($value) || !array_is_list($value) || count($value) !== 4) {
+        if (
+            !is_array($value)
+            || !array_is_list($value)
+            || count($value) !== 4
+            || !(is_int($value[0]) || is_float($value[0]))
+            || !(is_int($value[1]) || is_float($value[1]))
+            || !(is_int($value[2]) || is_float($value[2]))
+            || !(is_int($value[3]) || is_float($value[3]))
+        ) {
             throw new \UnexpectedValueException(sprintf('%s returned invalid quaternion data.', $operation));
         }
 

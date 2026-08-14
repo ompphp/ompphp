@@ -14,7 +14,14 @@ final readonly class Vector3
 
     public static function fromNative(mixed $value, string $operation): self
     {
-        if (!is_array($value) || !array_is_list($value) || count($value) !== 3) {
+        if (
+            !is_array($value)
+            || !array_is_list($value)
+            || count($value) !== 3
+            || !(is_int($value[0]) || is_float($value[0]))
+            || !(is_int($value[1]) || is_float($value[1]))
+            || !(is_int($value[2]) || is_float($value[2]))
+        ) {
             throw new \UnexpectedValueException(sprintf('%s returned invalid vector data.', $operation));
         }
 

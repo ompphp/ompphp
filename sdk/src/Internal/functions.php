@@ -20,6 +20,46 @@ function api_version(): int
     return \ompphp_api_version();
 }
 
+/** @return array<string, list<string>> */
+function load_composer_prefixes(string $path): array
+{
+    $data = require $path;
+    if (!is_array($data)) {
+        throw new \UnexpectedValueException("Composer PSR-4 metadata at {$path} must return an array.");
+    }
+    $prefixes = [];
+    foreach ($data as $prefix => $directories) {
+        if (!is_string($prefix) || !is_array($directories)) {
+            throw new \UnexpectedValueException("Composer PSR-4 metadata at {$path} is invalid.");
+        }
+        $prefixes[$prefix] = [];
+        foreach ($directories as $directory) {
+            if (!is_string($directory)) {
+                throw new \UnexpectedValueException("Composer PSR-4 metadata at {$path} is invalid.");
+            }
+            $prefixes[$prefix][] = $directory;
+        }
+    }
+    return $prefixes;
+}
+
+/** @return array<string, string> */
+function load_composer_class_map(string $path): array
+{
+    $data = require $path;
+    if (!is_array($data)) {
+        throw new \UnexpectedValueException("Composer class map at {$path} must return an array.");
+    }
+    $classMap = [];
+    foreach ($data as $class => $file) {
+        if (!is_string($class) || !is_string($file)) {
+            throw new \UnexpectedValueException("Composer class map at {$path} is invalid.");
+        }
+        $classMap[$class] = $file;
+    }
+    return $classMap;
+}
+
 function install_composer_compatibility_loader(): void
 {
     if (!function_exists('ompphp_api_version')) {
@@ -35,8 +75,8 @@ function install_composer_compatibility_loader(): void
     if ($composerDirectory === null) {
         return;
     }
-    $prefixes = require $composerDirectory . '/autoload_psr4.php';
-    $classMap = require $composerDirectory . '/autoload_classmap.php';
+    $prefixes = load_composer_prefixes($composerDirectory . '/autoload_psr4.php');
+    $classMap = load_composer_class_map($composerDirectory . '/autoload_classmap.php');
     spl_autoload_register(static function (string $class) use ($prefixes, $classMap): void {
         if (isset($classMap[$class])) {
             require $classMap[$class];

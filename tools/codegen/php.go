@@ -70,12 +70,21 @@ func generatePHP(path string, m model.Model) error {
 			fmt.Fprintf(&out, "    $result = %s;\n", call.String())
 			fmt.Fprintf(&out, "    if (!is_array($result) || !array_is_list($result) || count($result) !== %d) {\n", len(outputs))
 			fmt.Fprintf(&out, "        throw new \\UnexpectedValueException('%s returned invalid output data.');\n", function.Name)
-			out.WriteString("    }\n    return [")
+			out.WriteString("    }\n")
 			for i, output := range outputs {
+				outputType := phpType(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(output.Type), "*")))
+				if outputType == "bool" || outputType == "int" || outputType == "float" || outputType == "string" {
+					fmt.Fprintf(&out, "    if (!is_%s($result[%d])) {\n", phpTypeCheck(outputType), i)
+					fmt.Fprintf(&out, "        throw new \\UnexpectedValueException('%s returned invalid %s output at index %d.');\n", function.Name, outputType, i)
+					out.WriteString("    }\n")
+				}
+			}
+			out.WriteString("    return [")
+			for i := range outputs {
 				if i > 0 {
 					out.WriteString(", ")
 				}
-				fmt.Fprintf(&out, "%s$result[%d]", publicReturnCast(phpType(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(output.Type), "*")))), i)
+				fmt.Fprintf(&out, "$result[%d]", i)
 			}
 			out.WriteString("];\n")
 		} else if function.Name == "NPC_GetAll" {

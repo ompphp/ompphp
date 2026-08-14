@@ -58,7 +58,31 @@ function actor_get_animation(int $actor): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 8) {
         throw new \UnexpectedValueException('Actor_GetAnimation returned invalid output data.');
     }
-    return [(string) $result[0], (string) $result[1], (float) $result[2], (bool) $result[3], (bool) $result[4], (bool) $result[5], (bool) $result[6], (int) $result[7]];
+    if (!is_string($result[0])) {
+        throw new \UnexpectedValueException('Actor_GetAnimation returned invalid string output at index 0.');
+    }
+    if (!is_string($result[1])) {
+        throw new \UnexpectedValueException('Actor_GetAnimation returned invalid string output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Actor_GetAnimation returned invalid float output at index 2.');
+    }
+    if (!is_bool($result[3])) {
+        throw new \UnexpectedValueException('Actor_GetAnimation returned invalid bool output at index 3.');
+    }
+    if (!is_bool($result[4])) {
+        throw new \UnexpectedValueException('Actor_GetAnimation returned invalid bool output at index 4.');
+    }
+    if (!is_bool($result[5])) {
+        throw new \UnexpectedValueException('Actor_GetAnimation returned invalid bool output at index 5.');
+    }
+    if (!is_bool($result[6])) {
+        throw new \UnexpectedValueException('Actor_GetAnimation returned invalid bool output at index 6.');
+    }
+    if (!is_int($result[7])) {
+        throw new \UnexpectedValueException('Actor_GetAnimation returned invalid int output at index 7.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5], $result[6], $result[7]];
 }
 
 function actor_get_facing_angle(int $actor): float
@@ -95,7 +119,16 @@ function actor_get_pos(int $actor): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Actor_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Actor_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Actor_GetPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Actor_GetPos returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function actor_get_skin(int $actor): int
@@ -114,7 +147,22 @@ function actor_get_spawn_info(int $actor): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 5) {
         throw new \UnexpectedValueException('Actor_GetSpawnInfo returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (int) $result[4]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Actor_GetSpawnInfo returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Actor_GetSpawnInfo returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Actor_GetSpawnInfo returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('Actor_GetSpawnInfo returned invalid float output at index 3.');
+    }
+    if (!is_int($result[4])) {
+        throw new \UnexpectedValueException('Actor_GetSpawnInfo returned invalid int output at index 4.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4]];
 }
 
 function actor_get_virtual_world(int $actor): int
@@ -259,7 +307,19 @@ function checkpoint_get(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('Checkpoint_Get returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Checkpoint_Get returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Checkpoint_Get returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Checkpoint_Get returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('Checkpoint_Get returned invalid float output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 function checkpoint_is_active(int $player): bool
@@ -332,7 +392,43 @@ function class_get_data(int $classptr): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 12) {
         throw new \UnexpectedValueException('Class_GetData returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5], (int) $result[6], (int) $result[7], (int) $result[8], (int) $result[9], (int) $result[10], (int) $result[11]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid int output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid float output at index 3.');
+    }
+    if (!is_float($result[4])) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid float output at index 4.');
+    }
+    if (!is_float($result[5])) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid float output at index 5.');
+    }
+    if (!is_int($result[6])) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid int output at index 6.');
+    }
+    if (!is_int($result[7])) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid int output at index 7.');
+    }
+    if (!is_int($result[8])) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid int output at index 8.');
+    }
+    if (!is_int($result[9])) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid int output at index 9.');
+    }
+    if (!is_int($result[10])) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid int output at index 10.');
+    }
+    if (!is_int($result[11])) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid int output at index 11.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5], $result[6], $result[7], $result[8], $result[9], $result[10], $result[11]];
 }
 
 function class_get_id(int $cls): int
@@ -837,7 +933,13 @@ function custom_model_get_path(int $modelId): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('CustomModel_GetPath returned invalid output data.');
     }
-    return [(string) $result[0], (string) $result[1]];
+    if (!is_string($result[0])) {
+        throw new \UnexpectedValueException('CustomModel_GetPath returned invalid string output at index 0.');
+    }
+    if (!is_string($result[1])) {
+        throw new \UnexpectedValueException('CustomModel_GetPath returned invalid string output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function custom_model_is_valid(int $modelId): bool
@@ -955,7 +1057,19 @@ function gang_zone_get_pos(int $gangzone): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('GangZone_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('GangZone_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('GangZone_GetPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('GangZone_GetPos returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('GangZone_GetPos returned invalid float output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 function gang_zone_hide_for_all(int $gangzone): bool
@@ -1127,7 +1241,13 @@ function menu_get_column_width(int $menu): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('Menu_GetColumnWidth returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Menu_GetColumnWidth returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Menu_GetColumnWidth returned invalid float output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function menu_get_columns(int $menu): int
@@ -1173,7 +1293,13 @@ function menu_get_pos(int $menu): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('Menu_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Menu_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Menu_GetPos returned invalid float output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function menu_hide_for_player(int $menu, int $player): bool
@@ -1443,7 +1569,28 @@ function npc_get_animation(int $npc): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 7) {
         throw new \UnexpectedValueException('NPC_GetAnimation returned invalid output data.');
     }
-    return [(int) $result[0], (float) $result[1], (bool) $result[2], (bool) $result[3], (bool) $result[4], (bool) $result[5], (int) $result[6]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('NPC_GetAnimation returned invalid int output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('NPC_GetAnimation returned invalid float output at index 1.');
+    }
+    if (!is_bool($result[2])) {
+        throw new \UnexpectedValueException('NPC_GetAnimation returned invalid bool output at index 2.');
+    }
+    if (!is_bool($result[3])) {
+        throw new \UnexpectedValueException('NPC_GetAnimation returned invalid bool output at index 3.');
+    }
+    if (!is_bool($result[4])) {
+        throw new \UnexpectedValueException('NPC_GetAnimation returned invalid bool output at index 4.');
+    }
+    if (!is_bool($result[5])) {
+        throw new \UnexpectedValueException('NPC_GetAnimation returned invalid bool output at index 5.');
+    }
+    if (!is_int($result[6])) {
+        throw new \UnexpectedValueException('NPC_GetAnimation returned invalid int output at index 6.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5], $result[6]];
 }
 
 function npc_get_armour(int $npc): float
@@ -1543,7 +1690,16 @@ function npc_get_keys(int $npc): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('NPC_GetKeys returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (int) $result[2]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('NPC_GetKeys returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('NPC_GetKeys returned invalid int output at index 1.');
+    }
+    if (!is_int($result[2])) {
+        throw new \UnexpectedValueException('NPC_GetKeys returned invalid int output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 /** @return array{int, int, int} */
@@ -1553,7 +1709,16 @@ function npc_get_node_info(int $nodeId): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('NPC_GetNodeInfo returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (int) $result[2]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('NPC_GetNodeInfo returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('NPC_GetNodeInfo returned invalid int output at index 1.');
+    }
+    if (!is_int($result[2])) {
+        throw new \UnexpectedValueException('NPC_GetNodeInfo returned invalid int output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function npc_get_node_point_count(int $nodeId): int
@@ -1572,7 +1737,16 @@ function npc_get_node_point_position(int $nodeId): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('NPC_GetNodePointPosition returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('NPC_GetNodePointPosition returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('NPC_GetNodePointPosition returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('NPC_GetNodePointPosition returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function npc_get_node_type(int $nodeId): int
@@ -1600,7 +1774,19 @@ function npc_get_path_point(int $pathId, int $pointIndex): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('NPC_GetPathPoint returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('NPC_GetPathPoint returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('NPC_GetPathPoint returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('NPC_GetPathPoint returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('NPC_GetPathPoint returned invalid float output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 function npc_get_path_point_count(int $pathId): int
@@ -1628,7 +1814,16 @@ function npc_get_pos(int $npc): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('NPC_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('NPC_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('NPC_GetPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('NPC_GetPos returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function npc_get_record_count(): int
@@ -1647,7 +1842,16 @@ function npc_get_rot(int $npc): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('NPC_GetRot returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('NPC_GetRot returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('NPC_GetRot returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('NPC_GetRot returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function npc_get_special_action(int $npc): int
@@ -1675,7 +1879,16 @@ function npc_get_surfing_offset(int $npc): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('NPC_GetSurfingOffset returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('NPC_GetSurfingOffset returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('NPC_GetSurfingOffset returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('NPC_GetSurfingOffset returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function npc_get_surfing_player_object(int $npc): int
@@ -2675,7 +2888,16 @@ function object_get_attached_data(int $object): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Object_GetAttachedData returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (int) $result[2]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Object_GetAttachedData returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Object_GetAttachedData returned invalid int output at index 1.');
+    }
+    if (!is_int($result[2])) {
+        throw new \UnexpectedValueException('Object_GetAttachedData returned invalid int output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 /** @return array{float, float, float, float, float, float} */
@@ -2685,7 +2907,25 @@ function object_get_attached_offset(int $object): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 6) {
         throw new \UnexpectedValueException('Object_GetAttachedOffset returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Object_GetAttachedOffset returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Object_GetAttachedOffset returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Object_GetAttachedOffset returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('Object_GetAttachedOffset returned invalid float output at index 3.');
+    }
+    if (!is_float($result[4])) {
+        throw new \UnexpectedValueException('Object_GetAttachedOffset returned invalid float output at index 4.');
+    }
+    if (!is_float($result[5])) {
+        throw new \UnexpectedValueException('Object_GetAttachedOffset returned invalid float output at index 5.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5]];
 }
 
 function object_get_draw_distance(int $object): float
@@ -2713,7 +2953,19 @@ function object_get_material(int $object, int $materialIndex): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('Object_GetMaterial returned invalid output data.');
     }
-    return [(int) $result[0], (string) $result[1], (string) $result[2], (int) $result[3]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Object_GetMaterial returned invalid int output at index 0.');
+    }
+    if (!is_string($result[1])) {
+        throw new \UnexpectedValueException('Object_GetMaterial returned invalid string output at index 1.');
+    }
+    if (!is_string($result[2])) {
+        throw new \UnexpectedValueException('Object_GetMaterial returned invalid string output at index 2.');
+    }
+    if (!is_int($result[3])) {
+        throw new \UnexpectedValueException('Object_GetMaterial returned invalid int output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 /** @return array{string, int, string, int, bool, int, int, int} */
@@ -2723,7 +2975,31 @@ function object_get_material_text(int $object, int $materialIndex): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 8) {
         throw new \UnexpectedValueException('Object_GetMaterialText returned invalid output data.');
     }
-    return [(string) $result[0], (int) $result[1], (string) $result[2], (int) $result[3], (bool) $result[4], (int) $result[5], (int) $result[6], (int) $result[7]];
+    if (!is_string($result[0])) {
+        throw new \UnexpectedValueException('Object_GetMaterialText returned invalid string output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Object_GetMaterialText returned invalid int output at index 1.');
+    }
+    if (!is_string($result[2])) {
+        throw new \UnexpectedValueException('Object_GetMaterialText returned invalid string output at index 2.');
+    }
+    if (!is_int($result[3])) {
+        throw new \UnexpectedValueException('Object_GetMaterialText returned invalid int output at index 3.');
+    }
+    if (!is_bool($result[4])) {
+        throw new \UnexpectedValueException('Object_GetMaterialText returned invalid bool output at index 4.');
+    }
+    if (!is_int($result[5])) {
+        throw new \UnexpectedValueException('Object_GetMaterialText returned invalid int output at index 5.');
+    }
+    if (!is_int($result[6])) {
+        throw new \UnexpectedValueException('Object_GetMaterialText returned invalid int output at index 6.');
+    }
+    if (!is_int($result[7])) {
+        throw new \UnexpectedValueException('Object_GetMaterialText returned invalid int output at index 7.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5], $result[6], $result[7]];
 }
 
 function object_get_model(int $object): int
@@ -2751,7 +3027,16 @@ function object_get_moving_target_pos(int $object): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Object_GetMovingTargetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Object_GetMovingTargetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Object_GetMovingTargetPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Object_GetMovingTargetPos returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 /** @return array{float, float, float} */
@@ -2761,7 +3046,16 @@ function object_get_moving_target_rot(int $object): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Object_GetMovingTargetRot returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Object_GetMovingTargetRot returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Object_GetMovingTargetRot returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Object_GetMovingTargetRot returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 /** @return array{float, float, float} */
@@ -2771,7 +3065,16 @@ function object_get_pos(int $object): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Object_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Object_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Object_GetPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Object_GetPos returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 /** @return array{float, float, float} */
@@ -2781,7 +3084,16 @@ function object_get_rot(int $object): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Object_GetRot returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Object_GetRot returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Object_GetRot returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Object_GetRot returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function object_get_sync_rotation(int $object): bool
@@ -2971,7 +3283,16 @@ function pickup_get_pos(int $pickup): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Pickup_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Pickup_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Pickup_GetPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Pickup_GetPos returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function pickup_get_type(int $pickup): int
@@ -3143,7 +3464,16 @@ function player_object_get_attached_data(int $player, int $object): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('PlayerObject_GetAttachedData returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (int) $result[2]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('PlayerObject_GetAttachedData returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('PlayerObject_GetAttachedData returned invalid int output at index 1.');
+    }
+    if (!is_int($result[2])) {
+        throw new \UnexpectedValueException('PlayerObject_GetAttachedData returned invalid int output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 /** @return array{float, float, float, float, float, float} */
@@ -3153,7 +3483,25 @@ function player_object_get_attached_offset(int $player, int $object): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 6) {
         throw new \UnexpectedValueException('PlayerObject_GetAttachedOffset returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('PlayerObject_GetAttachedOffset returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('PlayerObject_GetAttachedOffset returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('PlayerObject_GetAttachedOffset returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('PlayerObject_GetAttachedOffset returned invalid float output at index 3.');
+    }
+    if (!is_float($result[4])) {
+        throw new \UnexpectedValueException('PlayerObject_GetAttachedOffset returned invalid float output at index 4.');
+    }
+    if (!is_float($result[5])) {
+        throw new \UnexpectedValueException('PlayerObject_GetAttachedOffset returned invalid float output at index 5.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5]];
 }
 
 function player_object_get_draw_distance(int $player, int $object): float
@@ -3181,7 +3529,19 @@ function player_object_get_material(int $player, int $object, int $materialIndex
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('PlayerObject_GetMaterial returned invalid output data.');
     }
-    return [(int) $result[0], (string) $result[1], (string) $result[2], (int) $result[3]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterial returned invalid int output at index 0.');
+    }
+    if (!is_string($result[1])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterial returned invalid string output at index 1.');
+    }
+    if (!is_string($result[2])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterial returned invalid string output at index 2.');
+    }
+    if (!is_int($result[3])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterial returned invalid int output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 /** @return array{string, int, string, int, bool, int, int, int} */
@@ -3191,7 +3551,31 @@ function player_object_get_material_text(int $player, int $object, int $material
     if (!is_array($result) || !array_is_list($result) || count($result) !== 8) {
         throw new \UnexpectedValueException('PlayerObject_GetMaterialText returned invalid output data.');
     }
-    return [(string) $result[0], (int) $result[1], (string) $result[2], (int) $result[3], (bool) $result[4], (int) $result[5], (int) $result[6], (int) $result[7]];
+    if (!is_string($result[0])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterialText returned invalid string output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterialText returned invalid int output at index 1.');
+    }
+    if (!is_string($result[2])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterialText returned invalid string output at index 2.');
+    }
+    if (!is_int($result[3])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterialText returned invalid int output at index 3.');
+    }
+    if (!is_bool($result[4])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterialText returned invalid bool output at index 4.');
+    }
+    if (!is_int($result[5])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterialText returned invalid int output at index 5.');
+    }
+    if (!is_int($result[6])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterialText returned invalid int output at index 6.');
+    }
+    if (!is_int($result[7])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterialText returned invalid int output at index 7.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5], $result[6], $result[7]];
 }
 
 function player_object_get_model(int $player, int $object): int
@@ -3219,7 +3603,16 @@ function player_object_get_moving_target_pos(int $player, int $object): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('PlayerObject_GetMovingTargetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMovingTargetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMovingTargetPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMovingTargetPos returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 /** @return array{float, float, float} */
@@ -3229,7 +3622,16 @@ function player_object_get_moving_target_rot(int $player, int $object): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('PlayerObject_GetMovingTargetRot returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMovingTargetRot returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMovingTargetRot returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('PlayerObject_GetMovingTargetRot returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 /** @return array{float, float, float} */
@@ -3239,7 +3641,16 @@ function player_object_get_pos(int $player, int $object): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('PlayerObject_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('PlayerObject_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('PlayerObject_GetPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('PlayerObject_GetPos returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 /** @return array{float, float, float} */
@@ -3249,7 +3660,16 @@ function player_object_get_rot(int $player, int $object): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('PlayerObject_GetRot returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('PlayerObject_GetRot returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('PlayerObject_GetRot returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('PlayerObject_GetRot returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function player_object_get_sync_rotation(int $player, int $object): bool
@@ -3448,7 +3868,13 @@ function player_text_draw_get_letter_size(int $player, int $textdraw): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('PlayerTextDraw_GetLetterSize returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetLetterSize returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetLetterSize returned invalid float output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function player_text_draw_get_outline(int $player, int $textdraw): int
@@ -3467,7 +3893,13 @@ function player_text_draw_get_pos(int $player, int $textdraw): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('PlayerTextDraw_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetPos returned invalid float output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function player_text_draw_get_preview_model(int $player, int $textdraw): int
@@ -3486,7 +3918,19 @@ function player_text_draw_get_preview_rot(int $player, int $textdraw): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('PlayerTextDraw_GetPreviewRot returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetPreviewRot returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetPreviewRot returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetPreviewRot returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetPreviewRot returned invalid float output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 /** @return array{int, int} */
@@ -3496,7 +3940,13 @@ function player_text_draw_get_preview_veh_color(int $player, int $textdraw): arr
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('PlayerTextDraw_GetPreviewVehColor returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetPreviewVehColor returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetPreviewVehColor returned invalid int output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function player_text_draw_get_shadow(int $player, int $textdraw): int
@@ -3524,7 +3974,13 @@ function player_text_draw_get_text_size(int $player, int $textdraw): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('PlayerTextDraw_GetTextSize returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetTextSize returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetTextSize returned invalid float output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function player_text_draw_hide(int $player, int $textdraw): bool
@@ -3777,7 +4233,13 @@ function player_text_label_get_attached_data(int $player, int $textlabel): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('PlayerTextLabel_GetAttachedData returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('PlayerTextLabel_GetAttachedData returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('PlayerTextLabel_GetAttachedData returned invalid int output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function player_text_label_get_color(int $player, int $textlabel): int
@@ -3823,7 +4285,16 @@ function player_text_label_get_pos(int $player, int $textlabel): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('PlayerTextLabel_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('PlayerTextLabel_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('PlayerTextLabel_GetPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('PlayerTextLabel_GetPos returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function player_text_label_get_text(int $player, int $textlabel): string
@@ -4076,7 +4547,13 @@ function player_get_animation_name(int $index): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('Player_GetAnimationName returned invalid output data.');
     }
-    return [(string) $result[0], (string) $result[1]];
+    if (!is_string($result[0])) {
+        throw new \UnexpectedValueException('Player_GetAnimationName returned invalid string output at index 0.');
+    }
+    if (!is_string($result[1])) {
+        throw new \UnexpectedValueException('Player_GetAnimationName returned invalid string output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function player_get_armor(int $player): float
@@ -4095,7 +4572,46 @@ function player_get_attached_object(int $player, int $index): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 13) {
         throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5], (float) $result[6], (float) $result[7], (float) $result[8], (float) $result[9], (float) $result[10], (int) $result[11], (int) $result[12]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid int output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid float output at index 3.');
+    }
+    if (!is_float($result[4])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid float output at index 4.');
+    }
+    if (!is_float($result[5])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid float output at index 5.');
+    }
+    if (!is_float($result[6])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid float output at index 6.');
+    }
+    if (!is_float($result[7])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid float output at index 7.');
+    }
+    if (!is_float($result[8])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid float output at index 8.');
+    }
+    if (!is_float($result[9])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid float output at index 9.');
+    }
+    if (!is_float($result[10])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid float output at index 10.');
+    }
+    if (!is_int($result[11])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid int output at index 11.');
+    }
+    if (!is_int($result[12])) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid int output at index 12.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5], $result[6], $result[7], $result[8], $result[9], $result[10], $result[11], $result[12]];
 }
 
 function player_get_buildings_removed(int $player): int
@@ -4123,7 +4639,16 @@ function player_get_camera_front_vector(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Player_GetCameraFrontVector returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Player_GetCameraFrontVector returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Player_GetCameraFrontVector returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Player_GetCameraFrontVector returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function player_get_camera_mode(int $player): int
@@ -4142,7 +4667,16 @@ function player_get_camera_pos(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Player_GetCameraPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Player_GetCameraPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Player_GetCameraPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Player_GetCameraPos returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function player_get_camera_target_actor(int $player): int
@@ -4242,7 +4776,25 @@ function player_get_dialog_data(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 6) {
         throw new \UnexpectedValueException('Player_GetDialogData returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (string) $result[2], (string) $result[3], (string) $result[4], (string) $result[5]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Player_GetDialogData returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Player_GetDialogData returned invalid int output at index 1.');
+    }
+    if (!is_string($result[2])) {
+        throw new \UnexpectedValueException('Player_GetDialogData returned invalid string output at index 2.');
+    }
+    if (!is_string($result[3])) {
+        throw new \UnexpectedValueException('Player_GetDialogData returned invalid string output at index 3.');
+    }
+    if (!is_string($result[4])) {
+        throw new \UnexpectedValueException('Player_GetDialogData returned invalid string output at index 4.');
+    }
+    if (!is_string($result[5])) {
+        throw new \UnexpectedValueException('Player_GetDialogData returned invalid string output at index 5.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5]];
 }
 
 function player_get_distance_from_point(int $player, float $x, float $y, float $z): float
@@ -4288,7 +4840,16 @@ function player_get_game_text(int $player, int $style): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Player_GetGameText returned invalid output data.');
     }
-    return [(string) $result[0], (int) $result[1], (int) $result[2]];
+    if (!is_string($result[0])) {
+        throw new \UnexpectedValueException('Player_GetGameText returned invalid string output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Player_GetGameText returned invalid int output at index 1.');
+    }
+    if (!is_int($result[2])) {
+        throw new \UnexpectedValueException('Player_GetGameText returned invalid int output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function player_get_ghost_mode(int $player): bool
@@ -4361,7 +4922,16 @@ function player_get_keys(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Player_GetKeys returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (int) $result[2]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Player_GetKeys returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Player_GetKeys returned invalid int output at index 1.');
+    }
+    if (!is_int($result[2])) {
+        throw new \UnexpectedValueException('Player_GetKeys returned invalid int output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function player_get_landing_gear_state(int $player): int
@@ -4380,7 +4950,25 @@ function player_get_last_shot_vectors(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 6) {
         throw new \UnexpectedValueException('Player_GetLastShotVectors returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Player_GetLastShotVectors returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Player_GetLastShotVectors returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Player_GetLastShotVectors returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('Player_GetLastShotVectors returned invalid float output at index 3.');
+    }
+    if (!is_float($result[4])) {
+        throw new \UnexpectedValueException('Player_GetLastShotVectors returned invalid float output at index 4.');
+    }
+    if (!is_float($result[5])) {
+        throw new \UnexpectedValueException('Player_GetLastShotVectors returned invalid float output at index 5.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5]];
 }
 
 function player_get_marker_for_player(int $player, int $other): int
@@ -4462,7 +5050,16 @@ function player_get_pos(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Player_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Player_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Player_GetPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Player_GetPos returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function player_get_raw_ip(int $player): int
@@ -4481,7 +5078,19 @@ function player_get_rotation_quat(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('Player_GetRotationQuat returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Player_GetRotationQuat returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Player_GetRotationQuat returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Player_GetRotationQuat returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('Player_GetRotationQuat returned invalid float output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 function player_get_score(int $player): int
@@ -4527,7 +5136,43 @@ function player_get_spawn_info(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 12) {
         throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5], (int) $result[6], (int) $result[7], (int) $result[8], (int) $result[9], (int) $result[10], (int) $result[11]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid int output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid float output at index 3.');
+    }
+    if (!is_float($result[4])) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid float output at index 4.');
+    }
+    if (!is_float($result[5])) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid float output at index 5.');
+    }
+    if (!is_int($result[6])) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid int output at index 6.');
+    }
+    if (!is_int($result[7])) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid int output at index 7.');
+    }
+    if (!is_int($result[8])) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid int output at index 8.');
+    }
+    if (!is_int($result[9])) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid int output at index 9.');
+    }
+    if (!is_int($result[10])) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid int output at index 10.');
+    }
+    if (!is_int($result[11])) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid int output at index 11.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5], $result[6], $result[7], $result[8], $result[9], $result[10], $result[11]];
 }
 
 function player_get_special_action(int $player): int
@@ -4573,7 +5218,16 @@ function player_get_surfing_offsets(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Player_GetSurfingOffsets returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Player_GetSurfingOffsets returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Player_GetSurfingOffsets returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Player_GetSurfingOffsets returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function player_get_surfing_player_object(int $player): int
@@ -4628,7 +5282,13 @@ function player_get_time(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('Player_GetTime returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Player_GetTime returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Player_GetTime returned invalid int output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function player_get_train_speed(int $player): float
@@ -4665,7 +5325,16 @@ function player_get_velocity(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Player_GetVelocity returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Player_GetVelocity returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Player_GetVelocity returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Player_GetVelocity returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function player_get_version(int $player): string
@@ -4711,7 +5380,13 @@ function player_get_weapon_data(int $player, int $slot): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('Player_GetWeaponData returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Player_GetWeaponData returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Player_GetWeaponData returned invalid int output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function player_get_weapon_state(int $player): int
@@ -4739,7 +5414,19 @@ function player_get_world_bounds(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('Player_GetWorldBounds returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Player_GetWorldBounds returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Player_GetWorldBounds returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Player_GetWorldBounds returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('Player_GetWorldBounds returned invalid float output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 function player_get_z_aim(int $player): float
@@ -5622,7 +6309,28 @@ function race_checkpoint_get(int $player): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 7) {
         throw new \UnexpectedValueException('RaceCheckpoint_Get returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5], (float) $result[6]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('RaceCheckpoint_Get returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('RaceCheckpoint_Get returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('RaceCheckpoint_Get returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('RaceCheckpoint_Get returned invalid float output at index 3.');
+    }
+    if (!is_float($result[4])) {
+        throw new \UnexpectedValueException('RaceCheckpoint_Get returned invalid float output at index 4.');
+    }
+    if (!is_float($result[5])) {
+        throw new \UnexpectedValueException('RaceCheckpoint_Get returned invalid float output at index 5.');
+    }
+    if (!is_float($result[6])) {
+        throw new \UnexpectedValueException('RaceCheckpoint_Get returned invalid float output at index 6.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5], $result[6]];
 }
 
 function race_checkpoint_is_active(int $player): bool
@@ -5758,7 +6466,13 @@ function text_draw_get_letter_size(int $textdraw): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('TextDraw_GetLetterSize returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('TextDraw_GetLetterSize returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('TextDraw_GetLetterSize returned invalid float output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function text_draw_get_outline(int $textdraw): int
@@ -5777,7 +6491,13 @@ function text_draw_get_pos(int $textdraw): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('TextDraw_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('TextDraw_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('TextDraw_GetPos returned invalid float output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function text_draw_get_preview_model(int $textdraw): int
@@ -5796,7 +6516,19 @@ function text_draw_get_preview_rot(int $textdraw): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('TextDraw_GetPreviewRot returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('TextDraw_GetPreviewRot returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('TextDraw_GetPreviewRot returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('TextDraw_GetPreviewRot returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('TextDraw_GetPreviewRot returned invalid float output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 /** @return array{int, int} */
@@ -5806,7 +6538,13 @@ function text_draw_get_preview_veh_color(int $textdraw): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('TextDraw_GetPreviewVehColor returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('TextDraw_GetPreviewVehColor returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('TextDraw_GetPreviewVehColor returned invalid int output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function text_draw_get_shadow(int $textdraw): int
@@ -5834,7 +6572,13 @@ function text_draw_get_text_size(int $textdraw): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('TextDraw_GetTextSize returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('TextDraw_GetTextSize returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('TextDraw_GetTextSize returned invalid float output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function text_draw_hide_for_all(int $textdraw): bool
@@ -6132,7 +6876,13 @@ function text_label_get_attached_data(int $textlabel): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('TextLabel_GetAttachedData returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('TextLabel_GetAttachedData returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('TextLabel_GetAttachedData returned invalid int output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function text_label_get_color(int $textlabel): int
@@ -6178,7 +6928,16 @@ function text_label_get_pos(int $textlabel): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('TextLabel_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('TextLabel_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('TextLabel_GetPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('TextLabel_GetPos returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function text_label_get_text(int $textlabel): string
@@ -6395,7 +7154,13 @@ function vehicle_get_color(int $vehicle): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
         throw new \UnexpectedValueException('Vehicle_GetColor returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Vehicle_GetColor returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Vehicle_GetColor returned invalid int output at index 1.');
+    }
+    return [$result[0], $result[1]];
 }
 
 function vehicle_get_component_in_slot(int $vehicle, int $slot): int
@@ -6423,7 +7188,19 @@ function vehicle_get_damage_status(int $vehicle): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('Vehicle_GetDamageStatus returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (int) $result[2], (int) $result[3]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Vehicle_GetDamageStatus returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Vehicle_GetDamageStatus returned invalid int output at index 1.');
+    }
+    if (!is_int($result[2])) {
+        throw new \UnexpectedValueException('Vehicle_GetDamageStatus returned invalid int output at index 2.');
+    }
+    if (!is_int($result[3])) {
+        throw new \UnexpectedValueException('Vehicle_GetDamageStatus returned invalid int output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 function vehicle_get_distance_from_point(int $vehicle, float $x, float $y, float $z): float
@@ -6505,7 +7282,34 @@ function vehicle_get_matrix(int $vehicle): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 9) {
         throw new \UnexpectedValueException('Vehicle_GetMatrix returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5], (float) $result[6], (float) $result[7], (float) $result[8]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Vehicle_GetMatrix returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Vehicle_GetMatrix returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Vehicle_GetMatrix returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('Vehicle_GetMatrix returned invalid float output at index 3.');
+    }
+    if (!is_float($result[4])) {
+        throw new \UnexpectedValueException('Vehicle_GetMatrix returned invalid float output at index 4.');
+    }
+    if (!is_float($result[5])) {
+        throw new \UnexpectedValueException('Vehicle_GetMatrix returned invalid float output at index 5.');
+    }
+    if (!is_float($result[6])) {
+        throw new \UnexpectedValueException('Vehicle_GetMatrix returned invalid float output at index 6.');
+    }
+    if (!is_float($result[7])) {
+        throw new \UnexpectedValueException('Vehicle_GetMatrix returned invalid float output at index 7.');
+    }
+    if (!is_float($result[8])) {
+        throw new \UnexpectedValueException('Vehicle_GetMatrix returned invalid float output at index 8.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5], $result[6], $result[7], $result[8]];
 }
 
 function vehicle_get_max_passenger_seats(int $modelid): int
@@ -6542,7 +7346,16 @@ function vehicle_get_model_info(int $vehiclemodel, int $infotype): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Vehicle_GetModelInfo returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Vehicle_GetModelInfo returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Vehicle_GetModelInfo returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Vehicle_GetModelInfo returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function vehicle_get_models_used(): int
@@ -6597,7 +7410,19 @@ function vehicle_get_params_car_doors(int $vehicle): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('Vehicle_GetParamsCarDoors returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (int) $result[2], (int) $result[3]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsCarDoors returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsCarDoors returned invalid int output at index 1.');
+    }
+    if (!is_int($result[2])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsCarDoors returned invalid int output at index 2.');
+    }
+    if (!is_int($result[3])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsCarDoors returned invalid int output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 /** @return array{int, int, int, int} */
@@ -6607,7 +7432,19 @@ function vehicle_get_params_car_windows(int $vehicle): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('Vehicle_GetParamsCarWindows returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (int) $result[2], (int) $result[3]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsCarWindows returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsCarWindows returned invalid int output at index 1.');
+    }
+    if (!is_int($result[2])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsCarWindows returned invalid int output at index 2.');
+    }
+    if (!is_int($result[3])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsCarWindows returned invalid int output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 /** @return array{int, int, int, int, int, int, int} */
@@ -6617,7 +7454,28 @@ function vehicle_get_params_ex(int $vehicle): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 7) {
         throw new \UnexpectedValueException('Vehicle_GetParamsEx returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (int) $result[2], (int) $result[3], (int) $result[4], (int) $result[5], (int) $result[6]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsEx returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsEx returned invalid int output at index 1.');
+    }
+    if (!is_int($result[2])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsEx returned invalid int output at index 2.');
+    }
+    if (!is_int($result[3])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsEx returned invalid int output at index 3.');
+    }
+    if (!is_int($result[4])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsEx returned invalid int output at index 4.');
+    }
+    if (!is_int($result[5])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsEx returned invalid int output at index 5.');
+    }
+    if (!is_int($result[6])) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsEx returned invalid int output at index 6.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5], $result[6]];
 }
 
 function vehicle_get_params_siren_state(int $vehicle): int
@@ -6636,7 +7494,16 @@ function vehicle_get_pos(int $vehicle): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Vehicle_GetPos returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Vehicle_GetPos returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Vehicle_GetPos returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Vehicle_GetPos returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 /** @return array{int, int, int, int} */
@@ -6646,7 +7513,19 @@ function vehicle_get_random_color_pair(int $modelid): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('Vehicle_GetRandomColorPair returned invalid output data.');
     }
-    return [(int) $result[0], (int) $result[1], (int) $result[2], (int) $result[3]];
+    if (!is_int($result[0])) {
+        throw new \UnexpectedValueException('Vehicle_GetRandomColorPair returned invalid int output at index 0.');
+    }
+    if (!is_int($result[1])) {
+        throw new \UnexpectedValueException('Vehicle_GetRandomColorPair returned invalid int output at index 1.');
+    }
+    if (!is_int($result[2])) {
+        throw new \UnexpectedValueException('Vehicle_GetRandomColorPair returned invalid int output at index 2.');
+    }
+    if (!is_int($result[3])) {
+        throw new \UnexpectedValueException('Vehicle_GetRandomColorPair returned invalid int output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 function vehicle_get_respawn_delay(int $vehicle): int
@@ -6674,7 +7553,19 @@ function vehicle_get_rotation_quat(int $vehicle): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
         throw new \UnexpectedValueException('Vehicle_GetRotationQuat returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Vehicle_GetRotationQuat returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Vehicle_GetRotationQuat returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Vehicle_GetRotationQuat returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('Vehicle_GetRotationQuat returned invalid float output at index 3.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3]];
 }
 
 function vehicle_get_siren_state(int $vehicle): int
@@ -6693,7 +7584,25 @@ function vehicle_get_spawn_info(int $vehicle): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 6) {
         throw new \UnexpectedValueException('Vehicle_GetSpawnInfo returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (int) $result[4], (int) $result[5]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Vehicle_GetSpawnInfo returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Vehicle_GetSpawnInfo returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Vehicle_GetSpawnInfo returned invalid float output at index 2.');
+    }
+    if (!is_float($result[3])) {
+        throw new \UnexpectedValueException('Vehicle_GetSpawnInfo returned invalid float output at index 3.');
+    }
+    if (!is_int($result[4])) {
+        throw new \UnexpectedValueException('Vehicle_GetSpawnInfo returned invalid int output at index 4.');
+    }
+    if (!is_int($result[5])) {
+        throw new \UnexpectedValueException('Vehicle_GetSpawnInfo returned invalid int output at index 5.');
+    }
+    return [$result[0], $result[1], $result[2], $result[3], $result[4], $result[5]];
 }
 
 function vehicle_get_tower(int $vehicle): int
@@ -6730,7 +7639,16 @@ function vehicle_get_velocity(int $vehicle): array
     if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
         throw new \UnexpectedValueException('Vehicle_GetVelocity returned invalid output data.');
     }
-    return [(float) $result[0], (float) $result[1], (float) $result[2]];
+    if (!is_float($result[0])) {
+        throw new \UnexpectedValueException('Vehicle_GetVelocity returned invalid float output at index 0.');
+    }
+    if (!is_float($result[1])) {
+        throw new \UnexpectedValueException('Vehicle_GetVelocity returned invalid float output at index 1.');
+    }
+    if (!is_float($result[2])) {
+        throw new \UnexpectedValueException('Vehicle_GetVelocity returned invalid float output at index 2.');
+    }
+    return [$result[0], $result[1], $result[2]];
 }
 
 function vehicle_get_virtual_world(int $vehicle): int

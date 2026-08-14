@@ -162,4 +162,11 @@ try {
     expect($error->getMessage() === 'Invalid_Test returned invalid vector data.');
 }
 
+try {
+    Vector3::fromNative([1.0, 'invalid', 3.0], 'Invalid_Test');
+    throw new RuntimeException('Invalid vector element was accepted.');
+} catch (UnexpectedValueException $error) {
+    expect($error->getMessage() === 'Invalid_Test returned invalid vector data.');
+}
+
 echo "SDK tests passed\n";
