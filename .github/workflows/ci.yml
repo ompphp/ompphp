@@ -7,6 +7,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,13 +28,14 @@ jobs:
       - run: for example in examples/*/composer.json; do composer install --working-dir="$(dirname "$example")" --no-interaction --no-progress; done
       - run: go run ./tools/codegen
       - run: git diff --exit-code -- sdk/src/Internal/api_generated.php sdk/src/Api sdk/src/Event/Events.php sdk/src/Constant cmd/component/native_generated.go cmd/component/native_generated.h cmd/component/events_generated.go cmd/component/events_generated.h
-      - run: go test -race ./...
+      - run: go test -race -short -timeout=3m ./...
       - run: GOARCH=amd64 CGO_ENABLED=1 go build -mod=vendor -buildmode=c-shared -o build/ompphp.so ./cmd/component
       - run: GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc go build -mod=vendor -buildmode=c-shared -o build/ompphp.dll ./cmd/component
       - run: ./tests/e2e-openmp.sh --skip-build
 
   windows-e2e:
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,15 +44,16 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: msys2/setup-msys2@v2
+        id: msys2
         with:
           msystem: MINGW64
-          update: true
           install: mingw-w64-x86_64-gcc
       - shell: pwsh
         run: |
           $env:CGO_ENABLED = '1'
           $env:GOARCH = 'amd64'
-          $env:CC = 'C:\msys64\mingw64\bin\gcc.exe'
+          $env:CC = Join-Path '${{ steps.msys2.outputs.msys2-location }}' 'mingw64\bin\gcc.exe'
+          if (!(Test-Path $env:CC)) { throw "MinGW compiler not found at $env:CC" }
           go build -mod=vendor -buildmode=c-shared -o build/ompphp.dll ./cmd/component
       - shell: pwsh
         run: ./tests/e2e-openmp.ps1

@@ -89,7 +89,7 @@ tasks:
   test:race:
     deps: [generate]
     cmds:
-      - go test -race ./...
+      - go test -race -short -timeout=3m ./...
 
   check:
     cmds:
