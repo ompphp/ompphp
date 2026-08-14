@@ -19,13 +19,15 @@ final class NativeStub
 function expectLastNativeCall(string $name, array $arguments): void
 {
     $lastCall = array_key_last(NativeStub::$calls);
-    expect($lastCall !== null);
+    if ($lastCall === null) {
+        throw new RuntimeException('No native call was recorded.');
+    }
     expect(NativeStub::$calls[$lastCall] === [$name, $arguments]);
 }
 
 function ompphp_native_call(string $name, mixed ...$arguments): mixed
 {
-    NativeStub::$calls[] = [$name, $arguments];
+    NativeStub::$calls[] = [$name, array_values($arguments)];
     return match ($name) {
         'Player_GetHealth', 'Player_GetArmor' => 75.5,
         'Player_GetScore', 'Player_GetMoney' => 123,
@@ -111,6 +113,7 @@ Runtime::assertCompatible();
 
 expect(PlayerAPI::setHealth(8, 88.0));
 expectLastNativeCall('Player_SetHealth', [8, 88.0]);
+expect(PlayerAPI::getKeys(7) === [132, -1, 1]);
 
 $actor = new Actor(2);
 expect($actor->setHealth(80.0));

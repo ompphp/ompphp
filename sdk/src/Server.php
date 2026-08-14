@@ -20,6 +20,6 @@ final class Server
     /** @internal */
     public static function dispatch(string $event, mixed ...$arguments): bool
     {
-        return \Omp\Internal\dispatch($event, $arguments) ?? true;
+        return \Omp\Internal\dispatch($event, array_values($arguments)) ?? true;
     }
 }

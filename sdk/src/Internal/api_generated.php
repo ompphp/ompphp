@@ -31,9 +31,14 @@ function actor_from_id(int $actorid): mixed
     return native_call('Actor_FromID', $actorid);
 }
 
-function actor_get_animation(int $actor): mixed
+/** @return array{string, string, float, bool, bool, bool, bool, int} */
+function actor_get_animation(int $actor): array
 {
-    return native_call('Actor_GetAnimation', $actor);
+    $result = native_call('Actor_GetAnimation', $actor);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 8) {
+        throw new \UnexpectedValueException('Actor_GetAnimation returned invalid output data.');
+    }
+    return [(string) $result[0], (string) $result[1], (float) $result[2], (bool) $result[3], (bool) $result[4], (bool) $result[5], (bool) $result[6], (int) $result[7]];
 }
 
 function actor_get_facing_angle(int $actor): mixed
@@ -51,9 +56,14 @@ function actor_get_id(int $actor): mixed
     return native_call('Actor_GetID', $actor);
 }
 
-function actor_get_pos(int $actor): mixed
+/** @return array{float, float, float} */
+function actor_get_pos(int $actor): array
 {
-    return native_call('Actor_GetPos', $actor);
+    $result = native_call('Actor_GetPos', $actor);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Actor_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function actor_get_skin(int $actor): mixed
@@ -61,9 +71,14 @@ function actor_get_skin(int $actor): mixed
     return native_call('Actor_GetSkin', $actor);
 }
 
-function actor_get_spawn_info(int $actor): mixed
+/** @return array{float, float, float, float, int} */
+function actor_get_spawn_info(int $actor): array
 {
-    return native_call('Actor_GetSpawnInfo', $actor);
+    $result = native_call('Actor_GetSpawnInfo', $actor);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 5) {
+        throw new \UnexpectedValueException('Actor_GetSpawnInfo returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (int) $result[4]];
 }
 
 function actor_get_virtual_world(int $actor): mixed
@@ -141,9 +156,14 @@ function checkpoint_disable(int $player): mixed
     return native_call('Checkpoint_Disable', $player);
 }
 
-function checkpoint_get(int $player): mixed
+/** @return array{float, float, float, float} */
+function checkpoint_get(int $player): array
 {
-    return native_call('Checkpoint_Get', $player);
+    $result = native_call('Checkpoint_Get', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('Checkpoint_Get returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
 }
 
 function checkpoint_is_active(int $player): mixed
@@ -181,9 +201,14 @@ function class_from_id(int $classid): mixed
     return native_call('Class_FromID', $classid);
 }
 
-function class_get_data(int $classptr): mixed
+/** @return array{int, int, float, float, float, float, int, int, int, int, int, int} */
+function class_get_data(int $classptr): array
 {
-    return native_call('Class_GetData', $classptr);
+    $result = native_call('Class_GetData', $classptr);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 12) {
+        throw new \UnexpectedValueException('Class_GetData returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5], (int) $result[6], (int) $result[7], (int) $result[8], (int) $result[9], (int) $result[10], (int) $result[11]];
 }
 
 function class_get_id(int $cls): mixed
@@ -461,9 +486,14 @@ function custom_model_find_model_file_name_from_crc(int $crc): mixed
     return native_call('CustomModel_FindModelFileNameFromCRC', $crc);
 }
 
-function custom_model_get_path(int $modelId): mixed
+/** @return array{string, string} */
+function custom_model_get_path(int $modelId): array
 {
-    return native_call('CustomModel_GetPath', $modelId);
+    $result = native_call('CustomModel_GetPath', $modelId);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('CustomModel_GetPath returned invalid output data.');
+    }
+    return [(string) $result[0], (string) $result[1]];
 }
 
 function custom_model_is_valid(int $modelId): mixed
@@ -526,9 +556,14 @@ function gang_zone_get_id(int $gangzone): mixed
     return native_call('GangZone_GetID', $gangzone);
 }
 
-function gang_zone_get_pos(int $gangzone): mixed
+/** @return array{float, float, float, float} */
+function gang_zone_get_pos(int $gangzone): array
 {
-    return native_call('GangZone_GetPos', $gangzone);
+    $result = native_call('GangZone_GetPos', $gangzone);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('GangZone_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
 }
 
 function gang_zone_hide_for_all(int $gangzone): mixed
@@ -621,9 +656,14 @@ function menu_get_column_header(int $menu, int $column): mixed
     return native_call('Menu_GetColumnHeader', $menu, $column);
 }
 
-function menu_get_column_width(int $menu): mixed
+/** @return array{float, float} */
+function menu_get_column_width(int $menu): array
 {
-    return native_call('Menu_GetColumnWidth', $menu);
+    $result = native_call('Menu_GetColumnWidth', $menu);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('Menu_GetColumnWidth returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1]];
 }
 
 function menu_get_columns(int $menu): mixed
@@ -646,9 +686,14 @@ function menu_get_items(int $menu, int $column): mixed
     return native_call('Menu_GetItems', $menu, $column);
 }
 
-function menu_get_pos(int $menu): mixed
+/** @return array{float, float} */
+function menu_get_pos(int $menu): array
 {
-    return native_call('Menu_GetPos', $menu);
+    $result = native_call('Menu_GetPos', $menu);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('Menu_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1]];
 }
 
 function menu_hide_for_player(int $menu, int $player): mixed
@@ -776,9 +821,14 @@ function npc_from_id(int $npcid): mixed
     return native_call('NPC_FromID', $npcid);
 }
 
-function npc_get_all(int $maxNPCs): mixed
+/** @return list<int> */
+function npc_get_all(int $maxNPCs): array
 {
-    return native_call('NPC_GetAll', $maxNPCs);
+    $result = native_call('NPC_GetAll', $maxNPCs);
+    if (!is_array($result)) {
+        throw new \UnexpectedValueException('NPC_GetAll returned invalid output data.');
+    }
+    return array_values(array_map(static fn (mixed $value): int => (int) $value, $result));
 }
 
 function npc_get_ammo(int $npc): mixed
@@ -791,9 +841,14 @@ function npc_get_ammo_in_clip(int $npc): mixed
     return native_call('NPC_GetAmmoInClip', $npc);
 }
 
-function npc_get_animation(int $npc): mixed
+/** @return array{int, float, bool, bool, bool, bool, int} */
+function npc_get_animation(int $npc): array
 {
-    return native_call('NPC_GetAnimation', $npc);
+    $result = native_call('NPC_GetAnimation', $npc);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 7) {
+        throw new \UnexpectedValueException('NPC_GetAnimation returned invalid output data.');
+    }
+    return [(int) $result[0], (float) $result[1], (bool) $result[2], (bool) $result[3], (bool) $result[4], (bool) $result[5], (int) $result[6]];
 }
 
 function npc_get_armour(int $npc): mixed
@@ -846,14 +901,24 @@ function npc_get_interior(int $npc): mixed
     return native_call('NPC_GetInterior', $npc);
 }
 
-function npc_get_keys(int $npc): mixed
+/** @return array{int, int, int} */
+function npc_get_keys(int $npc): array
 {
-    return native_call('NPC_GetKeys', $npc);
+    $result = native_call('NPC_GetKeys', $npc);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('NPC_GetKeys returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (int) $result[2]];
 }
 
-function npc_get_node_info(int $nodeId): mixed
+/** @return array{int, int, int} */
+function npc_get_node_info(int $nodeId): array
 {
-    return native_call('NPC_GetNodeInfo', $nodeId);
+    $result = native_call('NPC_GetNodeInfo', $nodeId);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('NPC_GetNodeInfo returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (int) $result[2]];
 }
 
 function npc_get_node_point_count(int $nodeId): mixed
@@ -861,9 +926,14 @@ function npc_get_node_point_count(int $nodeId): mixed
     return native_call('NPC_GetNodePointCount', $nodeId);
 }
 
-function npc_get_node_point_position(int $nodeId): mixed
+/** @return array{float, float, float} */
+function npc_get_node_point_position(int $nodeId): array
 {
-    return native_call('NPC_GetNodePointPosition', $nodeId);
+    $result = native_call('NPC_GetNodePointPosition', $nodeId);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('NPC_GetNodePointPosition returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function npc_get_node_type(int $nodeId): mixed
@@ -876,9 +946,14 @@ function npc_get_path_count(): mixed
     return native_call('NPC_GetPathCount');
 }
 
-function npc_get_path_point(int $pathId, int $pointIndex): mixed
+/** @return array{float, float, float, float} */
+function npc_get_path_point(int $pathId, int $pointIndex): array
 {
-    return native_call('NPC_GetPathPoint', $pathId, $pointIndex);
+    $result = native_call('NPC_GetPathPoint', $pathId, $pointIndex);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('NPC_GetPathPoint returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
 }
 
 function npc_get_path_point_count(int $pathId): mixed
@@ -891,9 +966,14 @@ function npc_get_player(int $npc): mixed
     return native_call('NPC_GetPlayer', $npc);
 }
 
-function npc_get_pos(int $npc): mixed
+/** @return array{float, float, float} */
+function npc_get_pos(int $npc): array
 {
-    return native_call('NPC_GetPos', $npc);
+    $result = native_call('NPC_GetPos', $npc);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('NPC_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function npc_get_record_count(): mixed
@@ -901,9 +981,14 @@ function npc_get_record_count(): mixed
     return native_call('NPC_GetRecordCount');
 }
 
-function npc_get_rot(int $npc): mixed
+/** @return array{float, float, float} */
+function npc_get_rot(int $npc): array
 {
-    return native_call('NPC_GetRot', $npc);
+    $result = native_call('NPC_GetRot', $npc);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('NPC_GetRot returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function npc_get_special_action(int $npc): mixed
@@ -916,9 +1001,14 @@ function npc_get_surfing_object(int $npc): mixed
     return native_call('NPC_GetSurfingObject', $npc);
 }
 
-function npc_get_surfing_offset(int $npc): mixed
+/** @return array{float, float, float} */
+function npc_get_surfing_offset(int $npc): array
 {
-    return native_call('NPC_GetSurfingOffset', $npc);
+    $result = native_call('NPC_GetSurfingOffset', $npc);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('NPC_GetSurfingOffset returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function npc_get_surfing_player_object(int $npc): mixed
@@ -1471,14 +1561,24 @@ function object_from_id(int $objectid): mixed
     return native_call('Object_FromID', $objectid);
 }
 
-function object_get_attached_data(int $object): mixed
+/** @return array{int, int, int} */
+function object_get_attached_data(int $object): array
 {
-    return native_call('Object_GetAttachedData', $object);
+    $result = native_call('Object_GetAttachedData', $object);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Object_GetAttachedData returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (int) $result[2]];
 }
 
-function object_get_attached_offset(int $object): mixed
+/** @return array{float, float, float, float, float, float} */
+function object_get_attached_offset(int $object): array
 {
-    return native_call('Object_GetAttachedOffset', $object);
+    $result = native_call('Object_GetAttachedOffset', $object);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 6) {
+        throw new \UnexpectedValueException('Object_GetAttachedOffset returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5]];
 }
 
 function object_get_draw_distance(int $object): mixed
@@ -1491,14 +1591,24 @@ function object_get_id(int $object): mixed
     return native_call('Object_GetID', $object);
 }
 
-function object_get_material(int $object, int $materialIndex): mixed
+/** @return array{int, string, string, int} */
+function object_get_material(int $object, int $materialIndex): array
 {
-    return native_call('Object_GetMaterial', $object, $materialIndex);
+    $result = native_call('Object_GetMaterial', $object, $materialIndex);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('Object_GetMaterial returned invalid output data.');
+    }
+    return [(int) $result[0], (string) $result[1], (string) $result[2], (int) $result[3]];
 }
 
-function object_get_material_text(int $object, int $materialIndex): mixed
+/** @return array{string, int, string, int, bool, int, int, int} */
+function object_get_material_text(int $object, int $materialIndex): array
 {
-    return native_call('Object_GetMaterialText', $object, $materialIndex);
+    $result = native_call('Object_GetMaterialText', $object, $materialIndex);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 8) {
+        throw new \UnexpectedValueException('Object_GetMaterialText returned invalid output data.');
+    }
+    return [(string) $result[0], (int) $result[1], (string) $result[2], (int) $result[3], (bool) $result[4], (int) $result[5], (int) $result[6], (int) $result[7]];
 }
 
 function object_get_model(int $object): mixed
@@ -1511,24 +1621,44 @@ function object_get_move_speed(int $object): mixed
     return native_call('Object_GetMoveSpeed', $object);
 }
 
-function object_get_moving_target_pos(int $object): mixed
+/** @return array{float, float, float} */
+function object_get_moving_target_pos(int $object): array
 {
-    return native_call('Object_GetMovingTargetPos', $object);
+    $result = native_call('Object_GetMovingTargetPos', $object);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Object_GetMovingTargetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
-function object_get_moving_target_rot(int $object): mixed
+/** @return array{float, float, float} */
+function object_get_moving_target_rot(int $object): array
 {
-    return native_call('Object_GetMovingTargetRot', $object);
+    $result = native_call('Object_GetMovingTargetRot', $object);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Object_GetMovingTargetRot returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
-function object_get_pos(int $object): mixed
+/** @return array{float, float, float} */
+function object_get_pos(int $object): array
 {
-    return native_call('Object_GetPos', $object);
+    $result = native_call('Object_GetPos', $object);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Object_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
-function object_get_rot(int $object): mixed
+/** @return array{float, float, float} */
+function object_get_rot(int $object): array
 {
-    return native_call('Object_GetRot', $object);
+    $result = native_call('Object_GetRot', $object);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Object_GetRot returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function object_get_sync_rotation(int $object): mixed
@@ -1631,9 +1761,14 @@ function pickup_get_model(int $pickup): mixed
     return native_call('Pickup_GetModel', $pickup);
 }
 
-function pickup_get_pos(int $pickup): mixed
+/** @return array{float, float, float} */
+function pickup_get_pos(int $pickup): array
 {
-    return native_call('Pickup_GetPos', $pickup);
+    $result = native_call('Pickup_GetPos', $pickup);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Pickup_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function pickup_get_type(int $pickup): mixed
@@ -1726,14 +1861,24 @@ function player_object_from_id(int $player, int $objectid): mixed
     return native_call('PlayerObject_FromID', $player, $objectid);
 }
 
-function player_object_get_attached_data(int $player, int $object): mixed
+/** @return array{int, int, int} */
+function player_object_get_attached_data(int $player, int $object): array
 {
-    return native_call('PlayerObject_GetAttachedData', $player, $object);
+    $result = native_call('PlayerObject_GetAttachedData', $player, $object);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('PlayerObject_GetAttachedData returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (int) $result[2]];
 }
 
-function player_object_get_attached_offset(int $player, int $object): mixed
+/** @return array{float, float, float, float, float, float} */
+function player_object_get_attached_offset(int $player, int $object): array
 {
-    return native_call('PlayerObject_GetAttachedOffset', $player, $object);
+    $result = native_call('PlayerObject_GetAttachedOffset', $player, $object);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 6) {
+        throw new \UnexpectedValueException('PlayerObject_GetAttachedOffset returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5]];
 }
 
 function player_object_get_draw_distance(int $player, int $object): mixed
@@ -1746,14 +1891,24 @@ function player_object_get_id(int $player, int $object): mixed
     return native_call('PlayerObject_GetID', $player, $object);
 }
 
-function player_object_get_material(int $player, int $object, int $materialIndex): mixed
+/** @return array{int, string, string, int} */
+function player_object_get_material(int $player, int $object, int $materialIndex): array
 {
-    return native_call('PlayerObject_GetMaterial', $player, $object, $materialIndex);
+    $result = native_call('PlayerObject_GetMaterial', $player, $object, $materialIndex);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterial returned invalid output data.');
+    }
+    return [(int) $result[0], (string) $result[1], (string) $result[2], (int) $result[3]];
 }
 
-function player_object_get_material_text(int $player, int $object, int $materialIndex): mixed
+/** @return array{string, int, string, int, bool, int, int, int} */
+function player_object_get_material_text(int $player, int $object, int $materialIndex): array
 {
-    return native_call('PlayerObject_GetMaterialText', $player, $object, $materialIndex);
+    $result = native_call('PlayerObject_GetMaterialText', $player, $object, $materialIndex);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 8) {
+        throw new \UnexpectedValueException('PlayerObject_GetMaterialText returned invalid output data.');
+    }
+    return [(string) $result[0], (int) $result[1], (string) $result[2], (int) $result[3], (bool) $result[4], (int) $result[5], (int) $result[6], (int) $result[7]];
 }
 
 function player_object_get_model(int $player, int $object): mixed
@@ -1766,24 +1921,44 @@ function player_object_get_move_speed(int $player, int $object): mixed
     return native_call('PlayerObject_GetMoveSpeed', $player, $object);
 }
 
-function player_object_get_moving_target_pos(int $player, int $object): mixed
+/** @return array{float, float, float} */
+function player_object_get_moving_target_pos(int $player, int $object): array
 {
-    return native_call('PlayerObject_GetMovingTargetPos', $player, $object);
+    $result = native_call('PlayerObject_GetMovingTargetPos', $player, $object);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('PlayerObject_GetMovingTargetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
-function player_object_get_moving_target_rot(int $player, int $object): mixed
+/** @return array{float, float, float} */
+function player_object_get_moving_target_rot(int $player, int $object): array
 {
-    return native_call('PlayerObject_GetMovingTargetRot', $player, $object);
+    $result = native_call('PlayerObject_GetMovingTargetRot', $player, $object);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('PlayerObject_GetMovingTargetRot returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
-function player_object_get_pos(int $player, int $object): mixed
+/** @return array{float, float, float} */
+function player_object_get_pos(int $player, int $object): array
 {
-    return native_call('PlayerObject_GetPos', $player, $object);
+    $result = native_call('PlayerObject_GetPos', $player, $object);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('PlayerObject_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
-function player_object_get_rot(int $player, int $object): mixed
+/** @return array{float, float, float} */
+function player_object_get_rot(int $player, int $object): array
 {
-    return native_call('PlayerObject_GetRot', $player, $object);
+    $result = native_call('PlayerObject_GetRot', $player, $object);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('PlayerObject_GetRot returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function player_object_get_sync_rotation(int $player, int $object): mixed
@@ -1891,9 +2066,14 @@ function player_text_draw_get_id(int $player, int $textdraw): mixed
     return native_call('PlayerTextDraw_GetID', $player, $textdraw);
 }
 
-function player_text_draw_get_letter_size(int $player, int $textdraw): mixed
+/** @return array{float, float} */
+function player_text_draw_get_letter_size(int $player, int $textdraw): array
 {
-    return native_call('PlayerTextDraw_GetLetterSize', $player, $textdraw);
+    $result = native_call('PlayerTextDraw_GetLetterSize', $player, $textdraw);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetLetterSize returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1]];
 }
 
 function player_text_draw_get_outline(int $player, int $textdraw): mixed
@@ -1901,9 +2081,14 @@ function player_text_draw_get_outline(int $player, int $textdraw): mixed
     return native_call('PlayerTextDraw_GetOutline', $player, $textdraw);
 }
 
-function player_text_draw_get_pos(int $player, int $textdraw): mixed
+/** @return array{float, float} */
+function player_text_draw_get_pos(int $player, int $textdraw): array
 {
-    return native_call('PlayerTextDraw_GetPos', $player, $textdraw);
+    $result = native_call('PlayerTextDraw_GetPos', $player, $textdraw);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1]];
 }
 
 function player_text_draw_get_preview_model(int $player, int $textdraw): mixed
@@ -1911,14 +2096,24 @@ function player_text_draw_get_preview_model(int $player, int $textdraw): mixed
     return native_call('PlayerTextDraw_GetPreviewModel', $player, $textdraw);
 }
 
-function player_text_draw_get_preview_rot(int $player, int $textdraw): mixed
+/** @return array{float, float, float, float} */
+function player_text_draw_get_preview_rot(int $player, int $textdraw): array
 {
-    return native_call('PlayerTextDraw_GetPreviewRot', $player, $textdraw);
+    $result = native_call('PlayerTextDraw_GetPreviewRot', $player, $textdraw);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetPreviewRot returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
 }
 
-function player_text_draw_get_preview_veh_color(int $player, int $textdraw): mixed
+/** @return array{int, int} */
+function player_text_draw_get_preview_veh_color(int $player, int $textdraw): array
 {
-    return native_call('PlayerTextDraw_GetPreviewVehColor', $player, $textdraw);
+    $result = native_call('PlayerTextDraw_GetPreviewVehColor', $player, $textdraw);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetPreviewVehColor returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1]];
 }
 
 function player_text_draw_get_shadow(int $player, int $textdraw): mixed
@@ -1931,9 +2126,14 @@ function player_text_draw_get_string(int $player, int $textdraw): mixed
     return native_call('PlayerTextDraw_GetString', $player, $textdraw);
 }
 
-function player_text_draw_get_text_size(int $player, int $textdraw): mixed
+/** @return array{float, float} */
+function player_text_draw_get_text_size(int $player, int $textdraw): array
 {
-    return native_call('PlayerTextDraw_GetTextSize', $player, $textdraw);
+    $result = native_call('PlayerTextDraw_GetTextSize', $player, $textdraw);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('PlayerTextDraw_GetTextSize returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1]];
 }
 
 function player_text_draw_hide(int $player, int $textdraw): mixed
@@ -2071,9 +2271,14 @@ function player_text_label_from_id(int $player, int $textlabelid): mixed
     return native_call('PlayerTextLabel_FromID', $player, $textlabelid);
 }
 
-function player_text_label_get_attached_data(int $player, int $textlabel): mixed
+/** @return array{int, int} */
+function player_text_label_get_attached_data(int $player, int $textlabel): array
 {
-    return native_call('PlayerTextLabel_GetAttachedData', $player, $textlabel);
+    $result = native_call('PlayerTextLabel_GetAttachedData', $player, $textlabel);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('PlayerTextLabel_GetAttachedData returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1]];
 }
 
 function player_text_label_get_color(int $player, int $textlabel): mixed
@@ -2096,9 +2301,14 @@ function player_text_label_get_los(int $player, int $textlabel): mixed
     return native_call('PlayerTextLabel_GetLOS', $player, $textlabel);
 }
 
-function player_text_label_get_pos(int $player, int $textlabel): mixed
+/** @return array{float, float, float} */
+function player_text_label_get_pos(int $player, int $textlabel): array
 {
-    return native_call('PlayerTextLabel_GetPos', $player, $textlabel);
+    $result = native_call('PlayerTextLabel_GetPos', $player, $textlabel);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('PlayerTextLabel_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function player_text_label_get_text(int $player, int $textlabel): mixed
@@ -2236,9 +2446,14 @@ function player_get_animation_index(int $player): mixed
     return native_call('Player_GetAnimationIndex', $player);
 }
 
-function player_get_animation_name(int $index): mixed
+/** @return array{string, string} */
+function player_get_animation_name(int $index): array
 {
-    return native_call('Player_GetAnimationName', $index);
+    $result = native_call('Player_GetAnimationName', $index);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('Player_GetAnimationName returned invalid output data.');
+    }
+    return [(string) $result[0], (string) $result[1]];
 }
 
 function player_get_armor(int $player): mixed
@@ -2246,9 +2461,14 @@ function player_get_armor(int $player): mixed
     return native_call('Player_GetArmor', $player);
 }
 
-function player_get_attached_object(int $player, int $index): mixed
+/** @return array{int, int, float, float, float, float, float, float, float, float, float, int, int} */
+function player_get_attached_object(int $player, int $index): array
 {
-    return native_call('Player_GetAttachedObject', $player, $index);
+    $result = native_call('Player_GetAttachedObject', $player, $index);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 13) {
+        throw new \UnexpectedValueException('Player_GetAttachedObject returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5], (float) $result[6], (float) $result[7], (float) $result[8], (float) $result[9], (float) $result[10], (int) $result[11], (int) $result[12]];
 }
 
 function player_get_buildings_removed(int $player): mixed
@@ -2261,9 +2481,14 @@ function player_get_camera_aspect_ratio(int $player): mixed
     return native_call('Player_GetCameraAspectRatio', $player);
 }
 
-function player_get_camera_front_vector(int $player): mixed
+/** @return array{float, float, float} */
+function player_get_camera_front_vector(int $player): array
 {
-    return native_call('Player_GetCameraFrontVector', $player);
+    $result = native_call('Player_GetCameraFrontVector', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Player_GetCameraFrontVector returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function player_get_camera_mode(int $player): mixed
@@ -2271,9 +2496,14 @@ function player_get_camera_mode(int $player): mixed
     return native_call('Player_GetCameraMode', $player);
 }
 
-function player_get_camera_pos(int $player): mixed
+/** @return array{float, float, float} */
+function player_get_camera_pos(int $player): array
 {
-    return native_call('Player_GetCameraPos', $player);
+    $result = native_call('Player_GetCameraPos', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Player_GetCameraPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function player_get_camera_target_actor(int $player): mixed
@@ -2326,9 +2556,14 @@ function player_get_dialog(int $player): mixed
     return native_call('Player_GetDialog', $player);
 }
 
-function player_get_dialog_data(int $player): mixed
+/** @return array{int, int, string, string, string, string} */
+function player_get_dialog_data(int $player): array
 {
-    return native_call('Player_GetDialogData', $player);
+    $result = native_call('Player_GetDialogData', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 6) {
+        throw new \UnexpectedValueException('Player_GetDialogData returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (string) $result[2], (string) $result[3], (string) $result[4], (string) $result[5]];
 }
 
 function player_get_distance_from_point(int $player, float $x, float $y, float $z): mixed
@@ -2351,9 +2586,14 @@ function player_get_fighting_style(int $player): mixed
     return native_call('Player_GetFightingStyle', $player);
 }
 
-function player_get_game_text(int $player, int $style): mixed
+/** @return array{string, int, int} */
+function player_get_game_text(int $player, int $style): array
 {
-    return native_call('Player_GetGameText', $player, $style);
+    $result = native_call('Player_GetGameText', $player, $style);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Player_GetGameText returned invalid output data.');
+    }
+    return [(string) $result[0], (int) $result[1], (int) $result[2]];
 }
 
 function player_get_ghost_mode(int $player): mixed
@@ -2391,9 +2631,14 @@ function player_get_ip(int $player): mixed
     return native_call('Player_GetIp', $player);
 }
 
-function player_get_keys(int $player): mixed
+/** @return array{int, int, int} */
+function player_get_keys(int $player): array
 {
-    return native_call('Player_GetKeys', $player);
+    $result = native_call('Player_GetKeys', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Player_GetKeys returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (int) $result[2]];
 }
 
 function player_get_landing_gear_state(int $player): mixed
@@ -2401,9 +2646,14 @@ function player_get_landing_gear_state(int $player): mixed
     return native_call('Player_GetLandingGearState', $player);
 }
 
-function player_get_last_shot_vectors(int $player): mixed
+/** @return array{float, float, float, float, float, float} */
+function player_get_last_shot_vectors(int $player): array
 {
-    return native_call('Player_GetLastShotVectors', $player);
+    $result = native_call('Player_GetLastShotVectors', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 6) {
+        throw new \UnexpectedValueException('Player_GetLastShotVectors returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5]];
 }
 
 function player_get_marker_for_player(int $player, int $other): mixed
@@ -2446,9 +2696,14 @@ function player_get_player_spectate_id(int $player): mixed
     return native_call('Player_GetPlayerSpectateID', $player);
 }
 
-function player_get_pos(int $player): mixed
+/** @return array{float, float, float} */
+function player_get_pos(int $player): array
 {
-    return native_call('Player_GetPos', $player);
+    $result = native_call('Player_GetPos', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Player_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function player_get_raw_ip(int $player): mixed
@@ -2456,9 +2711,14 @@ function player_get_raw_ip(int $player): mixed
     return native_call('Player_GetRawIp', $player);
 }
 
-function player_get_rotation_quat(int $player): mixed
+/** @return array{float, float, float, float} */
+function player_get_rotation_quat(int $player): array
 {
-    return native_call('Player_GetRotationQuat', $player);
+    $result = native_call('Player_GetRotationQuat', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('Player_GetRotationQuat returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
 }
 
 function player_get_score(int $player): mixed
@@ -2481,9 +2741,14 @@ function player_get_skin(int $player): mixed
     return native_call('Player_GetSkin', $player);
 }
 
-function player_get_spawn_info(int $player): mixed
+/** @return array{int, int, float, float, float, float, int, int, int, int, int, int} */
+function player_get_spawn_info(int $player): array
 {
-    return native_call('Player_GetSpawnInfo', $player);
+    $result = native_call('Player_GetSpawnInfo', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 12) {
+        throw new \UnexpectedValueException('Player_GetSpawnInfo returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5], (int) $result[6], (int) $result[7], (int) $result[8], (int) $result[9], (int) $result[10], (int) $result[11]];
 }
 
 function player_get_special_action(int $player): mixed
@@ -2506,9 +2771,14 @@ function player_get_surfing_object(int $player): mixed
     return native_call('Player_GetSurfingObject', $player);
 }
 
-function player_get_surfing_offsets(int $player): mixed
+/** @return array{float, float, float} */
+function player_get_surfing_offsets(int $player): array
 {
-    return native_call('Player_GetSurfingOffsets', $player);
+    $result = native_call('Player_GetSurfingOffsets', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Player_GetSurfingOffsets returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function player_get_surfing_player_object(int $player): mixed
@@ -2536,9 +2806,14 @@ function player_get_team(int $player): mixed
     return native_call('Player_GetTeam', $player);
 }
 
-function player_get_time(int $player): mixed
+/** @return array{int, int} */
+function player_get_time(int $player): array
 {
-    return native_call('Player_GetTime', $player);
+    $result = native_call('Player_GetTime', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('Player_GetTime returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1]];
 }
 
 function player_get_train_speed(int $player): mixed
@@ -2556,9 +2831,14 @@ function player_get_vehicle_seat(int $player): mixed
     return native_call('Player_GetVehicleSeat', $player);
 }
 
-function player_get_velocity(int $player): mixed
+/** @return array{float, float, float} */
+function player_get_velocity(int $player): array
 {
-    return native_call('Player_GetVelocity', $player);
+    $result = native_call('Player_GetVelocity', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Player_GetVelocity returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function player_get_version(int $player): mixed
@@ -2581,9 +2861,14 @@ function player_get_weapon(int $player): mixed
     return native_call('Player_GetWeapon', $player);
 }
 
-function player_get_weapon_data(int $player, int $slot): mixed
+/** @return array{int, int} */
+function player_get_weapon_data(int $player, int $slot): array
 {
-    return native_call('Player_GetWeaponData', $player, $slot);
+    $result = native_call('Player_GetWeaponData', $player, $slot);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('Player_GetWeaponData returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1]];
 }
 
 function player_get_weapon_state(int $player): mixed
@@ -2596,9 +2881,14 @@ function player_get_weather(int $player): mixed
     return native_call('Player_GetWeather', $player);
 }
 
-function player_get_world_bounds(int $player): mixed
+/** @return array{float, float, float, float} */
+function player_get_world_bounds(int $player): array
 {
-    return native_call('Player_GetWorldBounds', $player);
+    $result = native_call('Player_GetWorldBounds', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('Player_GetWorldBounds returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
 }
 
 function player_get_z_aim(int $player): mixed
@@ -3086,9 +3376,14 @@ function race_checkpoint_disable(int $player): mixed
     return native_call('RaceCheckpoint_Disable', $player);
 }
 
-function race_checkpoint_get(int $player): mixed
+/** @return array{float, float, float, float, float, float, float} */
+function race_checkpoint_get(int $player): array
 {
-    return native_call('RaceCheckpoint_Get', $player);
+    $result = native_call('RaceCheckpoint_Get', $player);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 7) {
+        throw new \UnexpectedValueException('RaceCheckpoint_Get returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5], (float) $result[6]];
 }
 
 function race_checkpoint_is_active(int $player): mixed
@@ -3161,9 +3456,14 @@ function text_draw_get_id(int $textdraw): mixed
     return native_call('TextDraw_GetID', $textdraw);
 }
 
-function text_draw_get_letter_size(int $textdraw): mixed
+/** @return array{float, float} */
+function text_draw_get_letter_size(int $textdraw): array
 {
-    return native_call('TextDraw_GetLetterSize', $textdraw);
+    $result = native_call('TextDraw_GetLetterSize', $textdraw);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('TextDraw_GetLetterSize returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1]];
 }
 
 function text_draw_get_outline(int $textdraw): mixed
@@ -3171,9 +3471,14 @@ function text_draw_get_outline(int $textdraw): mixed
     return native_call('TextDraw_GetOutline', $textdraw);
 }
 
-function text_draw_get_pos(int $textdraw): mixed
+/** @return array{float, float} */
+function text_draw_get_pos(int $textdraw): array
 {
-    return native_call('TextDraw_GetPos', $textdraw);
+    $result = native_call('TextDraw_GetPos', $textdraw);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('TextDraw_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1]];
 }
 
 function text_draw_get_preview_model(int $textdraw): mixed
@@ -3181,14 +3486,24 @@ function text_draw_get_preview_model(int $textdraw): mixed
     return native_call('TextDraw_GetPreviewModel', $textdraw);
 }
 
-function text_draw_get_preview_rot(int $textdraw): mixed
+/** @return array{float, float, float, float} */
+function text_draw_get_preview_rot(int $textdraw): array
 {
-    return native_call('TextDraw_GetPreviewRot', $textdraw);
+    $result = native_call('TextDraw_GetPreviewRot', $textdraw);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('TextDraw_GetPreviewRot returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
 }
 
-function text_draw_get_preview_veh_color(int $textdraw): mixed
+/** @return array{int, int} */
+function text_draw_get_preview_veh_color(int $textdraw): array
 {
-    return native_call('TextDraw_GetPreviewVehColor', $textdraw);
+    $result = native_call('TextDraw_GetPreviewVehColor', $textdraw);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('TextDraw_GetPreviewVehColor returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1]];
 }
 
 function text_draw_get_shadow(int $textdraw): mixed
@@ -3201,9 +3516,14 @@ function text_draw_get_string(int $textdraw): mixed
     return native_call('TextDraw_GetString', $textdraw);
 }
 
-function text_draw_get_text_size(int $textdraw): mixed
+/** @return array{float, float} */
+function text_draw_get_text_size(int $textdraw): array
 {
-    return native_call('TextDraw_GetTextSize', $textdraw);
+    $result = native_call('TextDraw_GetTextSize', $textdraw);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('TextDraw_GetTextSize returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1]];
 }
 
 function text_draw_hide_for_all(int $textdraw): mixed
@@ -3366,9 +3686,14 @@ function text_label_from_id(int $textlabelid): mixed
     return native_call('TextLabel_FromID', $textlabelid);
 }
 
-function text_label_get_attached_data(int $textlabel): mixed
+/** @return array{int, int} */
+function text_label_get_attached_data(int $textlabel): array
 {
-    return native_call('TextLabel_GetAttachedData', $textlabel);
+    $result = native_call('TextLabel_GetAttachedData', $textlabel);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('TextLabel_GetAttachedData returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1]];
 }
 
 function text_label_get_color(int $textlabel): mixed
@@ -3391,9 +3716,14 @@ function text_label_get_los(int $textlabel): mixed
     return native_call('TextLabel_GetLOS', $textlabel);
 }
 
-function text_label_get_pos(int $textlabel): mixed
+/** @return array{float, float, float} */
+function text_label_get_pos(int $textlabel): array
 {
-    return native_call('TextLabel_GetPos', $textlabel);
+    $result = native_call('TextLabel_GetPos', $textlabel);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('TextLabel_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function text_label_get_text(int $textlabel): mixed
@@ -3511,9 +3841,14 @@ function vehicle_get_cab(int $vehicle): mixed
     return native_call('Vehicle_GetCab', $vehicle);
 }
 
-function vehicle_get_color(int $vehicle): mixed
+/** @return array{int, int} */
+function vehicle_get_color(int $vehicle): array
 {
-    return native_call('Vehicle_GetColor', $vehicle);
+    $result = native_call('Vehicle_GetColor', $vehicle);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 2) {
+        throw new \UnexpectedValueException('Vehicle_GetColor returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1]];
 }
 
 function vehicle_get_component_in_slot(int $vehicle, int $slot): mixed
@@ -3526,9 +3861,14 @@ function vehicle_get_component_type(int $componentid): mixed
     return native_call('Vehicle_GetComponentType', $componentid);
 }
 
-function vehicle_get_damage_status(int $vehicle): mixed
+/** @return array{int, int, int, int} */
+function vehicle_get_damage_status(int $vehicle): array
 {
-    return native_call('Vehicle_GetDamageStatus', $vehicle);
+    $result = native_call('Vehicle_GetDamageStatus', $vehicle);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('Vehicle_GetDamageStatus returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (int) $result[2], (int) $result[3]];
 }
 
 function vehicle_get_distance_from_point(int $vehicle, float $x, float $y, float $z): mixed
@@ -3571,9 +3911,14 @@ function vehicle_get_last_driver(int $vehicle): mixed
     return native_call('Vehicle_GetLastDriver', $vehicle);
 }
 
-function vehicle_get_matrix(int $vehicle): mixed
+/** @return array{float, float, float, float, float, float, float, float, float} */
+function vehicle_get_matrix(int $vehicle): array
 {
-    return native_call('Vehicle_GetMatrix', $vehicle);
+    $result = native_call('Vehicle_GetMatrix', $vehicle);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 9) {
+        throw new \UnexpectedValueException('Vehicle_GetMatrix returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (float) $result[4], (float) $result[5], (float) $result[6], (float) $result[7], (float) $result[8]];
 }
 
 function vehicle_get_max_passenger_seats(int $modelid): mixed
@@ -3591,9 +3936,14 @@ function vehicle_get_model_count(int $modelid): mixed
     return native_call('Vehicle_GetModelCount', $modelid);
 }
 
-function vehicle_get_model_info(int $vehiclemodel, int $infotype): mixed
+/** @return array{float, float, float} */
+function vehicle_get_model_info(int $vehiclemodel, int $infotype): array
 {
-    return native_call('Vehicle_GetModelInfo', $vehiclemodel, $infotype);
+    $result = native_call('Vehicle_GetModelInfo', $vehiclemodel, $infotype);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Vehicle_GetModelInfo returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function vehicle_get_models_used(): mixed
@@ -3621,19 +3971,34 @@ function vehicle_get_paintjob(int $vehicle): mixed
     return native_call('Vehicle_GetPaintjob', $vehicle);
 }
 
-function vehicle_get_params_car_doors(int $vehicle): mixed
+/** @return array{int, int, int, int} */
+function vehicle_get_params_car_doors(int $vehicle): array
 {
-    return native_call('Vehicle_GetParamsCarDoors', $vehicle);
+    $result = native_call('Vehicle_GetParamsCarDoors', $vehicle);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsCarDoors returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (int) $result[2], (int) $result[3]];
 }
 
-function vehicle_get_params_car_windows(int $vehicle): mixed
+/** @return array{int, int, int, int} */
+function vehicle_get_params_car_windows(int $vehicle): array
 {
-    return native_call('Vehicle_GetParamsCarWindows', $vehicle);
+    $result = native_call('Vehicle_GetParamsCarWindows', $vehicle);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsCarWindows returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (int) $result[2], (int) $result[3]];
 }
 
-function vehicle_get_params_ex(int $vehicle): mixed
+/** @return array{int, int, int, int, int, int, int} */
+function vehicle_get_params_ex(int $vehicle): array
 {
-    return native_call('Vehicle_GetParamsEx', $vehicle);
+    $result = native_call('Vehicle_GetParamsEx', $vehicle);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 7) {
+        throw new \UnexpectedValueException('Vehicle_GetParamsEx returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (int) $result[2], (int) $result[3], (int) $result[4], (int) $result[5], (int) $result[6]];
 }
 
 function vehicle_get_params_siren_state(int $vehicle): mixed
@@ -3641,14 +4006,24 @@ function vehicle_get_params_siren_state(int $vehicle): mixed
     return native_call('Vehicle_GetParamsSirenState', $vehicle);
 }
 
-function vehicle_get_pos(int $vehicle): mixed
+/** @return array{float, float, float} */
+function vehicle_get_pos(int $vehicle): array
 {
-    return native_call('Vehicle_GetPos', $vehicle);
+    $result = native_call('Vehicle_GetPos', $vehicle);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Vehicle_GetPos returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
-function vehicle_get_random_color_pair(int $modelid): mixed
+/** @return array{int, int, int, int} */
+function vehicle_get_random_color_pair(int $modelid): array
 {
-    return native_call('Vehicle_GetRandomColorPair', $modelid);
+    $result = native_call('Vehicle_GetRandomColorPair', $modelid);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('Vehicle_GetRandomColorPair returned invalid output data.');
+    }
+    return [(int) $result[0], (int) $result[1], (int) $result[2], (int) $result[3]];
 }
 
 function vehicle_get_respawn_delay(int $vehicle): mixed
@@ -3661,9 +4036,14 @@ function vehicle_get_respawn_tick(int $vehicle): mixed
     return native_call('Vehicle_GetRespawnTick', $vehicle);
 }
 
-function vehicle_get_rotation_quat(int $vehicle): mixed
+/** @return array{float, float, float, float} */
+function vehicle_get_rotation_quat(int $vehicle): array
 {
-    return native_call('Vehicle_GetRotationQuat', $vehicle);
+    $result = native_call('Vehicle_GetRotationQuat', $vehicle);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 4) {
+        throw new \UnexpectedValueException('Vehicle_GetRotationQuat returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3]];
 }
 
 function vehicle_get_siren_state(int $vehicle): mixed
@@ -3671,9 +4051,14 @@ function vehicle_get_siren_state(int $vehicle): mixed
     return native_call('Vehicle_GetSirenState', $vehicle);
 }
 
-function vehicle_get_spawn_info(int $vehicle): mixed
+/** @return array{float, float, float, float, int, int} */
+function vehicle_get_spawn_info(int $vehicle): array
 {
-    return native_call('Vehicle_GetSpawnInfo', $vehicle);
+    $result = native_call('Vehicle_GetSpawnInfo', $vehicle);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 6) {
+        throw new \UnexpectedValueException('Vehicle_GetSpawnInfo returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2], (float) $result[3], (int) $result[4], (int) $result[5]];
 }
 
 function vehicle_get_tower(int $vehicle): mixed
@@ -3691,9 +4076,14 @@ function vehicle_get_train_speed(int $vehicle): mixed
     return native_call('Vehicle_GetTrainSpeed', $vehicle);
 }
 
-function vehicle_get_velocity(int $vehicle): mixed
+/** @return array{float, float, float} */
+function vehicle_get_velocity(int $vehicle): array
 {
-    return native_call('Vehicle_GetVelocity', $vehicle);
+    $result = native_call('Vehicle_GetVelocity', $vehicle);
+    if (!is_array($result) || !array_is_list($result) || count($result) !== 3) {
+        throw new \UnexpectedValueException('Vehicle_GetVelocity returned invalid output data.');
+    }
+    return [(float) $result[0], (float) $result[1], (float) $result[2]];
 }
 
 function vehicle_get_virtual_world(int $vehicle): mixed

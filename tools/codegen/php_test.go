@@ -100,7 +100,10 @@ func TestGeneratePHPExcludesOutputParameters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "function player_get_pos(int $player): mixed") {
+	if !strings.Contains(string(data), "/** @return array{float, float, float} */") ||
+		!strings.Contains(string(data), "function player_get_pos(int $player): array") ||
+		!strings.Contains(string(data), "count($result) !== 3") ||
+		!strings.Contains(string(data), "return [(float) $result[0], (float) $result[1], (float) $result[2]]") {
 		t.Fatalf("unexpected output:\n%s", data)
 	}
 }

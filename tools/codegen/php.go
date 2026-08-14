@@ -22,6 +22,24 @@ func generatePHP(path string, m model.Model) error {
 		if !phpCallable(function) {
 			continue
 		}
+		outputs := make([]model.Parameter, 0, len(function.Parameters))
+		for _, parameter := range function.Parameters {
+			if parameter.Output {
+				outputs = append(outputs, parameter)
+			}
+		}
+		returnType := "mixed"
+		if len(outputs) > 1 {
+			parts := make([]string, len(outputs))
+			for i, output := range outputs {
+				parts[i] = phpType(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(output.Type), "*")))
+			}
+			fmt.Fprintf(&out, "/** @return array{%s} */\n", strings.Join(parts, ", "))
+			returnType = "array"
+		} else if function.Name == "NPC_GetAll" {
+			out.WriteString("/** @return list<int> */\n")
+			returnType = "array"
+		}
 		fmt.Fprintf(&out, "function %s(", snake(function.Name))
 		inputIndex := 0
 		for _, p := range function.Parameters {
@@ -34,16 +52,36 @@ func generatePHP(path string, m model.Model) error {
 			fmt.Fprintf(&out, "%s $%s", phpType(p.Type), safePHPName(p.Name))
 			inputIndex++
 		}
-		out.WriteString("): mixed\n{\n    return native_call('")
-		out.WriteString(function.Name)
-		out.WriteString("'")
+		fmt.Fprintf(&out, "): %s\n{\n", returnType)
+		var call strings.Builder
+		fmt.Fprintf(&call, "native_call('%s'", function.Name)
 		for _, p := range function.Parameters {
 			if p.Output {
 				continue
 			}
-			fmt.Fprintf(&out, ", $%s", safePHPName(p.Name))
+			fmt.Fprintf(&call, ", $%s", safePHPName(p.Name))
 		}
-		out.WriteString(");\n}\n\n")
+		call.WriteString(")")
+		if len(outputs) > 1 {
+			fmt.Fprintf(&out, "    $result = %s;\n", call.String())
+			fmt.Fprintf(&out, "    if (!is_array($result) || !array_is_list($result) || count($result) !== %d) {\n", len(outputs))
+			fmt.Fprintf(&out, "        throw new \\UnexpectedValueException('%s returned invalid output data.');\n", function.Name)
+			out.WriteString("    }\n    return [")
+			for i, output := range outputs {
+				if i > 0 {
+					out.WriteString(", ")
+				}
+				fmt.Fprintf(&out, "%s$result[%d]", publicReturnCast(phpType(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(output.Type), "*")))), i)
+			}
+			out.WriteString("];\n")
+		} else if function.Name == "NPC_GetAll" {
+			fmt.Fprintf(&out, "    $result = %s;\n", call.String())
+			out.WriteString("    if (!is_array($result)) {\n        throw new \\UnexpectedValueException('NPC_GetAll returned invalid output data.');\n    }\n")
+			out.WriteString("    return array_values(array_map(static fn (mixed $value): int => (int) $value, $result));\n")
+		} else {
+			fmt.Fprintf(&out, "    return %s;\n", call.String())
+		}
+		out.WriteString("}\n\n")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create PHP output directory: %w", err)
