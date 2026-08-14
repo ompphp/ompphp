@@ -32,7 +32,7 @@ const APIVersion = 1
 var Version = "0.1.0-dev"
 
 var registerOnce sync.Once
-var gateways native.Registry
+var gatewayStateKey = phpv.NewStateKey("ompphp native gateway")
 
 type Logger interface{ Printf(string, ...any) }
 
@@ -56,9 +56,10 @@ type Stats struct {
 
 func New(parent context.Context, gateway native.Gateway, logger Logger) *Runtime {
 	registerOnce.Do(registerExtension)
-	gateways.Set(gateway)
 	p := phpctx.NewProcess("ompphp")
-	return &Runtime{global: phpctx.NewGlobal(parent, p, ini.New()), process: p, logger: logger, slow: slowCallbackThreshold()}
+	global := phpctx.NewGlobal(parent, p, ini.New())
+	global.SetState(gatewayStateKey, gateway)
+	return &Runtime{global: global, process: p, logger: logger, slow: slowCallbackThreshold()}
 }
 
 func (r *Runtime) Load(entry string) error {

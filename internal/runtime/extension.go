@@ -5,6 +5,7 @@ import (
 
 	"github.com/KarpelesLab/goro/core/phpctx"
 	"github.com/KarpelesLab/goro/core/phpv"
+	"github.com/ompphp/ompphp/internal/native"
 )
 
 func registerExtension() {
@@ -28,7 +29,11 @@ func nativeCall(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
 	for _, arg := range args[1:] {
 		values = append(values, fromPHP(ctx, arg))
 	}
-	result, err := gateways.Call(name, values)
+	gateway, ok := ctx.Global().State(gatewayStateKey).(native.Gateway)
+	if !ok || gateway == nil {
+		return nil, fmt.Errorf("%s: %w", name, native.ErrUnavailable)
+	}
+	result, err := gateway.Call(name, values)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}

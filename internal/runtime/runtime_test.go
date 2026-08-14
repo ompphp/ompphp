@@ -232,6 +232,31 @@ $GLOBALS['nativeResult'] = (new \Omp\Player(7))->setHealth(95.0);
 	}
 }
 
+func TestRuntimesKeepIndependentNativeGateways(t *testing.T) {
+	firstCalls := 0
+	secondCalls := 0
+	first := New(context.Background(), native.Func(func(name string, arguments []any) (any, error) {
+		firstCalls++
+		return name, nil
+	}), nil)
+	t.Cleanup(first.Close)
+	second := New(context.Background(), native.Func(func(name string, arguments []any) (any, error) {
+		secondCalls++
+		return name, nil
+	}), nil)
+	t.Cleanup(second.Close)
+
+	if err := first.Load(script(t, `<?php $GLOBALS['result'] = ompphp_native_call('First');`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := second.Load(script(t, `<?php $GLOBALS['result'] = ompphp_native_call('Second');`)); err != nil {
+		t.Fatal(err)
+	}
+	if firstCalls != 1 || secondCalls != 1 {
+		t.Fatalf("native calls routed to wrong runtime: first=%d second=%d", firstCalls, secondCalls)
+	}
+}
+
 func TestSDKEventDispatcherRunsInGoro(t *testing.T) {
 	_, file, _, ok := goruntime.Caller(0)
 	if !ok {
