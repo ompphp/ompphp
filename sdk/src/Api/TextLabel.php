@@ -10,99 +10,99 @@ final class TextLabel
 {
     public static function attachToPlayer(int $textlabel, int $player, float $offsetX, float $offsetY, float $offsetZ): bool
     {
-        return (bool) \Omp\Internal\text_label_attach_to_player($textlabel, $player, $offsetX, $offsetY, $offsetZ);
+        return \Omp\Internal\text_label_attach_to_player($textlabel, $player, $offsetX, $offsetY, $offsetZ);
     }
 
     public static function attachToVehicle(int $textlabel, int $vehicle, float $offsetX, float $offsetY, float $offsetZ): bool
     {
-        return (bool) \Omp\Internal\text_label_attach_to_vehicle($textlabel, $vehicle, $offsetX, $offsetY, $offsetZ);
+        return \Omp\Internal\text_label_attach_to_vehicle($textlabel, $vehicle, $offsetX, $offsetY, $offsetZ);
     }
 
     public static function create(string $text, int $color, float $x, float $y, float $z, float $drawDistance, int $virtualWorld, bool $los): int
     {
-        return (int) \Omp\Internal\text_label_create($text, $color, $x, $y, $z, $drawDistance, $virtualWorld, $los);
+        return \Omp\Internal\text_label_create($text, $color, $x, $y, $z, $drawDistance, $virtualWorld, $los);
     }
 
     public static function destroy(int $textlabel): bool
     {
-        return (bool) \Omp\Internal\text_label_destroy($textlabel);
+        return \Omp\Internal\text_label_destroy($textlabel);
     }
 
     public static function fromId(int $textlabelid): int
     {
-        return (int) \Omp\Internal\text_label_from_id($textlabelid);
+        return \Omp\Internal\text_label_from_id($textlabelid);
     }
 
     /** @return array{int, int} */
     public static function getAttachedData(int $textlabel): array
     {
-        return (array) \Omp\Internal\text_label_get_attached_data($textlabel);
+        return \Omp\Internal\text_label_get_attached_data($textlabel);
     }
 
     public static function getColor(int $textlabel): int
     {
-        return (int) \Omp\Internal\text_label_get_color($textlabel);
+        return \Omp\Internal\text_label_get_color($textlabel);
     }
 
     public static function getDrawDistance(int $textlabel): float
     {
-        return (float) \Omp\Internal\text_label_get_draw_distance($textlabel);
+        return \Omp\Internal\text_label_get_draw_distance($textlabel);
     }
 
     public static function getId(int $textlabel): int
     {
-        return (int) \Omp\Internal\text_label_get_id($textlabel);
+        return \Omp\Internal\text_label_get_id($textlabel);
     }
 
     public static function getLos(int $textlabel): bool
     {
-        return (bool) \Omp\Internal\text_label_get_los($textlabel);
+        return \Omp\Internal\text_label_get_los($textlabel);
     }
 
     /** @return array{float, float, float} */
     public static function getPos(int $textlabel): array
     {
-        return (array) \Omp\Internal\text_label_get_pos($textlabel);
+        return \Omp\Internal\text_label_get_pos($textlabel);
     }
 
     public static function getText(int $textlabel): string
     {
-        return (string) \Omp\Internal\text_label_get_text($textlabel);
+        return \Omp\Internal\text_label_get_text($textlabel);
     }
 
     public static function getVirtualWorld(int $textlabel): int
     {
-        return (int) \Omp\Internal\text_label_get_virtual_world($textlabel);
+        return \Omp\Internal\text_label_get_virtual_world($textlabel);
     }
 
     public static function isStreamedIn(int $player, int $textlabel): bool
     {
-        return (bool) \Omp\Internal\text_label_is_streamed_in($player, $textlabel);
+        return \Omp\Internal\text_label_is_streamed_in($player, $textlabel);
     }
 
     public static function isValid(int $textlabel): bool
     {
-        return (bool) \Omp\Internal\text_label_is_valid($textlabel);
+        return \Omp\Internal\text_label_is_valid($textlabel);
     }
 
     public static function setDrawDistance(int $textlabel, float $distance): bool
     {
-        return (bool) \Omp\Internal\text_label_set_draw_distance($textlabel, $distance);
+        return \Omp\Internal\text_label_set_draw_distance($textlabel, $distance);
     }
 
     public static function setLos(int $textlabel, bool $status): bool
     {
-        return (bool) \Omp\Internal\text_label_set_los($textlabel, $status);
+        return \Omp\Internal\text_label_set_los($textlabel, $status);
     }
 
     public static function setVirtualWorld(int $textlabel, int $world): bool
     {
-        return (bool) \Omp\Internal\text_label_set_virtual_world($textlabel, $world);
+        return \Omp\Internal\text_label_set_virtual_world($textlabel, $world);
     }
 
     public static function updateText(int $textlabel, int $color, string $text): bool
     {
-        return (bool) \Omp\Internal\text_label_update_text($textlabel, $color, $text);
+        return \Omp\Internal\text_label_update_text($textlabel, $color, $text);
     }
 
 }

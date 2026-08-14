@@ -137,6 +137,9 @@ expect(Runtime::apiVersion() === 1);
 expect(Runtime::version() === '0.1.0-test');
 Runtime::assertCompatible();
 
+expect(\Omp\Internal\native_call('Named_Arguments', player: 7) === true);
+expectLastNativeCall('Named_Arguments', [7]);
+
 expect(PlayerAPI::setHealth(8, 88.0));
 expectLastNativeCall('Player_SetHealth', [8, 88.0]);
 expect(PlayerAPI::getKeys(7) === [132, -1, 1]);

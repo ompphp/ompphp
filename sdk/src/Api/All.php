@@ -10,22 +10,22 @@ final class All
 {
     public static function createExplosion(float $x, float $y, float $z, int $type, float $radius): bool
     {
-        return (bool) \Omp\Internal\all_create_explosion($x, $y, $z, $type, $radius);
+        return \Omp\Internal\all_create_explosion($x, $y, $z, $type, $radius);
     }
 
     public static function enableStuntBonus(bool $enable): bool
     {
-        return (bool) \Omp\Internal\all_enable_stunt_bonus($enable);
+        return \Omp\Internal\all_enable_stunt_bonus($enable);
     }
 
     public static function sendClientMessage(int $color, string $text): bool
     {
-        return (bool) \Omp\Internal\all_send_client_message($color, $text);
+        return \Omp\Internal\all_send_client_message($color, $text);
     }
 
     public static function sendDeathMessage(int $killer, int $killee, int $weapon): bool
     {
-        return (bool) \Omp\Internal\all_send_death_message($killer, $killee, $weapon);
+        return \Omp\Internal\all_send_death_message($killer, $killee, $weapon);
     }
 
 }

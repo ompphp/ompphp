@@ -10,28 +10,28 @@ final class Checkpoint
 {
     public static function disable(int $player): bool
     {
-        return (bool) \Omp\Internal\checkpoint_disable($player);
+        return \Omp\Internal\checkpoint_disable($player);
     }
 
     /** @return array{float, float, float, float} */
     public static function get(int $player): array
     {
-        return (array) \Omp\Internal\checkpoint_get($player);
+        return \Omp\Internal\checkpoint_get($player);
     }
 
     public static function isActive(int $player): bool
     {
-        return (bool) \Omp\Internal\checkpoint_is_active($player);
+        return \Omp\Internal\checkpoint_is_active($player);
     }
 
     public static function isPlayerIn(int $player): bool
     {
-        return (bool) \Omp\Internal\checkpoint_is_player_in($player);
+        return \Omp\Internal\checkpoint_is_player_in($player);
     }
 
     public static function set(int $player, float $x, float $y, float $z, float $radius): bool
     {
-        return (bool) \Omp\Internal\checkpoint_set($player, $x, $y, $z, $radius);
+        return \Omp\Internal\checkpoint_set($player, $x, $y, $z, $radius);
     }
 
 }

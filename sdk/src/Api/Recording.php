@@ -10,12 +10,12 @@ final class Recording
 {
     public static function start(int $player, int $type, string $file): bool
     {
-        return (bool) \Omp\Internal\recording_start($player, $type, $file);
+        return \Omp\Internal\recording_start($player, $type, $file);
     }
 
     public static function stop(int $player): bool
     {
-        return (bool) \Omp\Internal\recording_stop($player);
+        return \Omp\Internal\recording_stop($player);
     }
 
 }

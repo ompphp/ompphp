@@ -10,232 +10,232 @@ final class Core
 {
     public static function addRule(string $name, string $value): bool
     {
-        return (bool) \Omp\Internal\core_add_rule($name, $value);
+        return \Omp\Internal\core_add_rule($name, $value);
     }
 
     public static function allowAdminTeleport(bool $allow): bool
     {
-        return (bool) \Omp\Internal\core_allow_admin_teleport($allow);
+        return \Omp\Internal\core_allow_admin_teleport($allow);
     }
 
     public static function allowInteriorWeapons(bool $allow): bool
     {
-        return (bool) \Omp\Internal\core_allow_interior_weapons($allow);
+        return \Omp\Internal\core_allow_interior_weapons($allow);
     }
 
     public static function allowNickNameCharacter(int $character, bool $allow): bool
     {
-        return (bool) \Omp\Internal\core_allow_nick_name_character($character, $allow);
+        return \Omp\Internal\core_allow_nick_name_character($character, $allow);
     }
 
     public static function areAllAnimationsEnabled(): bool
     {
-        return (bool) \Omp\Internal\core_are_all_animations_enabled();
+        return \Omp\Internal\core_are_all_animations_enabled();
     }
 
     public static function areInteriorWeaponsAllowed(): bool
     {
-        return (bool) \Omp\Internal\core_are_interior_weapons_allowed();
+        return \Omp\Internal\core_are_interior_weapons_allowed();
     }
 
     public static function blockIpAddress(string $ipAddress, int $timeMS): bool
     {
-        return (bool) \Omp\Internal\core_block_ip_address($ipAddress, $timeMS);
+        return \Omp\Internal\core_block_ip_address($ipAddress, $timeMS);
     }
 
     public static function clearBanList(): bool
     {
-        return (bool) \Omp\Internal\core_clear_ban_list();
+        return \Omp\Internal\core_clear_ban_list();
     }
 
     public static function disableEntryExitMarkers(): bool
     {
-        return (bool) \Omp\Internal\core_disable_entry_exit_markers();
+        return \Omp\Internal\core_disable_entry_exit_markers();
     }
 
     public static function disableNameTagsLos(): bool
     {
-        return (bool) \Omp\Internal\core_disable_name_tags_los();
+        return \Omp\Internal\core_disable_name_tags_los();
     }
 
     public static function enableAllAnimations(bool $allow): bool
     {
-        return (bool) \Omp\Internal\core_enable_all_animations($allow);
+        return \Omp\Internal\core_enable_all_animations($allow);
     }
 
     public static function enableZoneNames(bool $enable): bool
     {
-        return (bool) \Omp\Internal\core_enable_zone_names($enable);
+        return \Omp\Internal\core_enable_zone_names($enable);
     }
 
     public static function gameModeSetText(string $string): bool
     {
-        return (bool) \Omp\Internal\core_game_mode_set_text($string);
+        return \Omp\Internal\core_game_mode_set_text($string);
     }
 
     public static function getGravity(): float
     {
-        return (float) \Omp\Internal\core_get_gravity();
+        return \Omp\Internal\core_get_gravity();
     }
 
     public static function getWeaponName(int $weaponid): string
     {
-        return (string) \Omp\Internal\core_get_weapon_name($weaponid);
+        return \Omp\Internal\core_get_weapon_name($weaponid);
     }
 
     public static function getWeaponSlot(int $weapon): int
     {
-        return (int) \Omp\Internal\core_get_weapon_slot($weapon);
+        return \Omp\Internal\core_get_weapon_slot($weapon);
     }
 
     public static function getWeather(): int
     {
-        return (int) \Omp\Internal\core_get_weather();
+        return \Omp\Internal\core_get_weather();
     }
 
     public static function getWorldTime(): int
     {
-        return (int) \Omp\Internal\core_get_world_time();
+        return \Omp\Internal\core_get_world_time();
     }
 
     public static function hideGameTextForAll(int $style): bool
     {
-        return (bool) \Omp\Internal\core_hide_game_text_for_all($style);
+        return \Omp\Internal\core_hide_game_text_for_all($style);
     }
 
     public static function isAdminTeleportAllowed(): bool
     {
-        return (bool) \Omp\Internal\core_is_admin_teleport_allowed();
+        return \Omp\Internal\core_is_admin_teleport_allowed();
     }
 
     public static function isAnimationLibraryValid(string $name): bool
     {
-        return (bool) \Omp\Internal\core_is_animation_library_valid($name);
+        return \Omp\Internal\core_is_animation_library_valid($name);
     }
 
     public static function isChatTextReplacementToggled(): bool
     {
-        return (bool) \Omp\Internal\core_is_chat_text_replacement_toggled();
+        return \Omp\Internal\core_is_chat_text_replacement_toggled();
     }
 
     public static function isIpAddressBanned(string $ip): bool
     {
-        return (bool) \Omp\Internal\core_is_ip_address_banned($ip);
+        return \Omp\Internal\core_is_ip_address_banned($ip);
     }
 
     public static function isNickNameCharacterAllowed(int $character): bool
     {
-        return (bool) \Omp\Internal\core_is_nick_name_character_allowed($character);
+        return \Omp\Internal\core_is_nick_name_character_allowed($character);
     }
 
     public static function isNickNameValid(string $name): bool
     {
-        return (bool) \Omp\Internal\core_is_nick_name_valid($name);
+        return \Omp\Internal\core_is_nick_name_valid($name);
     }
 
     public static function isValidRule(string $name): bool
     {
-        return (bool) \Omp\Internal\core_is_valid_rule($name);
+        return \Omp\Internal\core_is_valid_rule($name);
     }
 
     public static function log(string $text): bool
     {
-        return (bool) \Omp\Internal\core_log($text);
+        return \Omp\Internal\core_log($text);
     }
 
     public static function maxPlayers(): int
     {
-        return (int) \Omp\Internal\core_max_players();
+        return \Omp\Internal\core_max_players();
     }
 
     public static function networkStats(): string
     {
-        return (string) \Omp\Internal\core_network_stats();
+        return \Omp\Internal\core_network_stats();
     }
 
     public static function removeRule(string $name): bool
     {
-        return (bool) \Omp\Internal\core_remove_rule($name);
+        return \Omp\Internal\core_remove_rule($name);
     }
 
     public static function sendRconCommand(string $command): bool
     {
-        return (bool) \Omp\Internal\core_send_rcon_command($command);
+        return \Omp\Internal\core_send_rcon_command($command);
     }
 
     public static function serverTickRate(): int
     {
-        return (int) \Omp\Internal\core_server_tick_rate();
+        return \Omp\Internal\core_server_tick_rate();
     }
 
     public static function setChatRadius(float $globalChatRadius): bool
     {
-        return (bool) \Omp\Internal\core_set_chat_radius($globalChatRadius);
+        return \Omp\Internal\core_set_chat_radius($globalChatRadius);
     }
 
     public static function setDeathDropAmount(int $amount): bool
     {
-        return (bool) \Omp\Internal\core_set_death_drop_amount($amount);
+        return \Omp\Internal\core_set_death_drop_amount($amount);
     }
 
     public static function setGravity(float $gravity): bool
     {
-        return (bool) \Omp\Internal\core_set_gravity($gravity);
+        return \Omp\Internal\core_set_gravity($gravity);
     }
 
     public static function setMarkerRadius(float $playerMarkerRadius): bool
     {
-        return (bool) \Omp\Internal\core_set_marker_radius($playerMarkerRadius);
+        return \Omp\Internal\core_set_marker_radius($playerMarkerRadius);
     }
 
     public static function setNameTagsDrawDistance(float $distance): bool
     {
-        return (bool) \Omp\Internal\core_set_name_tags_draw_distance($distance);
+        return \Omp\Internal\core_set_name_tags_draw_distance($distance);
     }
 
     public static function setWeather(int $weatherid): bool
     {
-        return (bool) \Omp\Internal\core_set_weather($weatherid);
+        return \Omp\Internal\core_set_weather($weatherid);
     }
 
     public static function setWorldTime(int $hour): bool
     {
-        return (bool) \Omp\Internal\core_set_world_time($hour);
+        return \Omp\Internal\core_set_world_time($hour);
     }
 
     public static function showGameTextForAll(string $msg, int $time, int $style): bool
     {
-        return (bool) \Omp\Internal\core_show_game_text_for_all($msg, $time, $style);
+        return \Omp\Internal\core_show_game_text_for_all($msg, $time, $style);
     }
 
     public static function showNameTags(bool $show): bool
     {
-        return (bool) \Omp\Internal\core_show_name_tags($show);
+        return \Omp\Internal\core_show_name_tags($show);
     }
 
     public static function showPlayerMarkers(int $mode): bool
     {
-        return (bool) \Omp\Internal\core_show_player_markers($mode);
+        return \Omp\Internal\core_show_player_markers($mode);
     }
 
     public static function tickCount(): int
     {
-        return (int) \Omp\Internal\core_tick_count();
+        return \Omp\Internal\core_tick_count();
     }
 
     public static function toggleChatTextReplacement(bool $enable): bool
     {
-        return (bool) \Omp\Internal\core_toggle_chat_text_replacement($enable);
+        return \Omp\Internal\core_toggle_chat_text_replacement($enable);
     }
 
     public static function unBlockIpAddress(string $ipAddress): bool
     {
-        return (bool) \Omp\Internal\core_un_block_ip_address($ipAddress);
+        return \Omp\Internal\core_un_block_ip_address($ipAddress);
     }
 
     public static function usePedAnims(): bool
     {
-        return (bool) \Omp\Internal\core_use_ped_anims();
+        return \Omp\Internal\core_use_ped_anims();
     }
 
 }

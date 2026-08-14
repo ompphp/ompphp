@@ -10,103 +10,103 @@ final class GangZone
 {
     public static function create(float $minx, float $miny, float $maxx, float $maxy): int
     {
-        return (int) \Omp\Internal\gang_zone_create($minx, $miny, $maxx, $maxy);
+        return \Omp\Internal\gang_zone_create($minx, $miny, $maxx, $maxy);
     }
 
     public static function destroy(int $gangzone): bool
     {
-        return (bool) \Omp\Internal\gang_zone_destroy($gangzone);
+        return \Omp\Internal\gang_zone_destroy($gangzone);
     }
 
     public static function flashForAll(int $gangzone, int $color): bool
     {
-        return (bool) \Omp\Internal\gang_zone_flash_for_all($gangzone, $color);
+        return \Omp\Internal\gang_zone_flash_for_all($gangzone, $color);
     }
 
     public static function flashForPlayer(int $player, int $gangzone, int $color): bool
     {
-        return (bool) \Omp\Internal\gang_zone_flash_for_player($player, $gangzone, $color);
+        return \Omp\Internal\gang_zone_flash_for_player($player, $gangzone, $color);
     }
 
     public static function fromId(int $gangzoneid): int
     {
-        return (int) \Omp\Internal\gang_zone_from_id($gangzoneid);
+        return \Omp\Internal\gang_zone_from_id($gangzoneid);
     }
 
     public static function getColorForPlayer(int $player, int $gangzone): int
     {
-        return (int) \Omp\Internal\gang_zone_get_color_for_player($player, $gangzone);
+        return \Omp\Internal\gang_zone_get_color_for_player($player, $gangzone);
     }
 
     public static function getFlashColorForPlayer(int $player, int $gangzone): int
     {
-        return (int) \Omp\Internal\gang_zone_get_flash_color_for_player($player, $gangzone);
+        return \Omp\Internal\gang_zone_get_flash_color_for_player($player, $gangzone);
     }
 
     public static function getId(int $gangzone): int
     {
-        return (int) \Omp\Internal\gang_zone_get_id($gangzone);
+        return \Omp\Internal\gang_zone_get_id($gangzone);
     }
 
     /** @return array{float, float, float, float} */
     public static function getPos(int $gangzone): array
     {
-        return (array) \Omp\Internal\gang_zone_get_pos($gangzone);
+        return \Omp\Internal\gang_zone_get_pos($gangzone);
     }
 
     public static function hideForAll(int $gangzone): bool
     {
-        return (bool) \Omp\Internal\gang_zone_hide_for_all($gangzone);
+        return \Omp\Internal\gang_zone_hide_for_all($gangzone);
     }
 
     public static function hideForPlayer(int $player, int $gangzone): bool
     {
-        return (bool) \Omp\Internal\gang_zone_hide_for_player($player, $gangzone);
+        return \Omp\Internal\gang_zone_hide_for_player($player, $gangzone);
     }
 
     public static function isFlashingForPlayer(int $player, int $gangzone): bool
     {
-        return (bool) \Omp\Internal\gang_zone_is_flashing_for_player($player, $gangzone);
+        return \Omp\Internal\gang_zone_is_flashing_for_player($player, $gangzone);
     }
 
     public static function isPlayerIn(int $player, int $gangzone): bool
     {
-        return (bool) \Omp\Internal\gang_zone_is_player_in($player, $gangzone);
+        return \Omp\Internal\gang_zone_is_player_in($player, $gangzone);
     }
 
     public static function isValid(int $gangzone): bool
     {
-        return (bool) \Omp\Internal\gang_zone_is_valid($gangzone);
+        return \Omp\Internal\gang_zone_is_valid($gangzone);
     }
 
     public static function isVisibleForPlayer(int $player, int $gangzone): bool
     {
-        return (bool) \Omp\Internal\gang_zone_is_visible_for_player($player, $gangzone);
+        return \Omp\Internal\gang_zone_is_visible_for_player($player, $gangzone);
     }
 
     public static function showForAll(int $gangzone, int $color): bool
     {
-        return (bool) \Omp\Internal\gang_zone_show_for_all($gangzone, $color);
+        return \Omp\Internal\gang_zone_show_for_all($gangzone, $color);
     }
 
     public static function showForPlayer(int $player, int $gangzone, int $color): bool
     {
-        return (bool) \Omp\Internal\gang_zone_show_for_player($player, $gangzone, $color);
+        return \Omp\Internal\gang_zone_show_for_player($player, $gangzone, $color);
     }
 
     public static function stopFlashForAll(int $gangzone): bool
     {
-        return (bool) \Omp\Internal\gang_zone_stop_flash_for_all($gangzone);
+        return \Omp\Internal\gang_zone_stop_flash_for_all($gangzone);
     }
 
     public static function stopFlashForPlayer(int $player, int $gangzone): bool
     {
-        return (bool) \Omp\Internal\gang_zone_stop_flash_for_player($player, $gangzone);
+        return \Omp\Internal\gang_zone_stop_flash_for_player($player, $gangzone);
     }
 
     public static function useCheck(int $gangzone, bool $enable): bool
     {
-        return (bool) \Omp\Internal\gang_zone_use_check($gangzone, $enable);
+        return \Omp\Internal\gang_zone_use_check($gangzone, $enable);
     }
 
 }

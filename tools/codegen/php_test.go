@@ -127,7 +127,7 @@ func TestGeneratePublicAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(player), "public static function setHealth(int $player, float $health): bool") || !strings.Contains(string(player), "return (bool) \\Omp\\Internal\\player_set_health($player, $health);") {
+	if !strings.Contains(string(player), "public static function setHealth(int $player, float $health): bool") || !strings.Contains(string(player), "return \\Omp\\Internal\\player_set_health($player, $health);") {
 		t.Fatalf("unexpected Player API:\n%s", player)
 	}
 	object, err := os.ReadFile(filepath.Join(outDir, "GameObject.php"))

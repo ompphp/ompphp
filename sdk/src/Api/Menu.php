@@ -10,99 +10,99 @@ final class Menu
 {
     public static function addItem(int $menu, int $column, string $text): int
     {
-        return (int) \Omp\Internal\menu_add_item($menu, $column, $text);
+        return \Omp\Internal\menu_add_item($menu, $column, $text);
     }
 
     public static function create(string $title, int $columns, float $x, float $y, float $column1Width, float $column2Width): int
     {
-        return (int) \Omp\Internal\menu_create($title, $columns, $x, $y, $column1Width, $column2Width);
+        return \Omp\Internal\menu_create($title, $columns, $x, $y, $column1Width, $column2Width);
     }
 
     public static function destroy(int $menu): bool
     {
-        return (bool) \Omp\Internal\menu_destroy($menu);
+        return \Omp\Internal\menu_destroy($menu);
     }
 
     public static function disable(int $menu): bool
     {
-        return (bool) \Omp\Internal\menu_disable($menu);
+        return \Omp\Internal\menu_disable($menu);
     }
 
     public static function disableRow(int $menu, int $row): bool
     {
-        return (bool) \Omp\Internal\menu_disable_row($menu, $row);
+        return \Omp\Internal\menu_disable_row($menu, $row);
     }
 
     public static function fromId(int $menuid): int
     {
-        return (int) \Omp\Internal\menu_from_id($menuid);
+        return \Omp\Internal\menu_from_id($menuid);
     }
 
     public static function getColumnHeader(int $menu, int $column): string
     {
-        return (string) \Omp\Internal\menu_get_column_header($menu, $column);
+        return \Omp\Internal\menu_get_column_header($menu, $column);
     }
 
     /** @return array{float, float} */
     public static function getColumnWidth(int $menu): array
     {
-        return (array) \Omp\Internal\menu_get_column_width($menu);
+        return \Omp\Internal\menu_get_column_width($menu);
     }
 
     public static function getColumns(int $menu): int
     {
-        return (int) \Omp\Internal\menu_get_columns($menu);
+        return \Omp\Internal\menu_get_columns($menu);
     }
 
     public static function getId(int $menu): int
     {
-        return (int) \Omp\Internal\menu_get_id($menu);
+        return \Omp\Internal\menu_get_id($menu);
     }
 
     public static function getItem(int $menu, int $column, int $row): string
     {
-        return (string) \Omp\Internal\menu_get_item($menu, $column, $row);
+        return \Omp\Internal\menu_get_item($menu, $column, $row);
     }
 
     public static function getItems(int $menu, int $column): int
     {
-        return (int) \Omp\Internal\menu_get_items($menu, $column);
+        return \Omp\Internal\menu_get_items($menu, $column);
     }
 
     /** @return array{float, float} */
     public static function getPos(int $menu): array
     {
-        return (array) \Omp\Internal\menu_get_pos($menu);
+        return \Omp\Internal\menu_get_pos($menu);
     }
 
     public static function hideForPlayer(int $menu, int $player): bool
     {
-        return (bool) \Omp\Internal\menu_hide_for_player($menu, $player);
+        return \Omp\Internal\menu_hide_for_player($menu, $player);
     }
 
     public static function isDisabled(int $menu): bool
     {
-        return (bool) \Omp\Internal\menu_is_disabled($menu);
+        return \Omp\Internal\menu_is_disabled($menu);
     }
 
     public static function isRowDisabled(int $menu, int $row): bool
     {
-        return (bool) \Omp\Internal\menu_is_row_disabled($menu, $row);
+        return \Omp\Internal\menu_is_row_disabled($menu, $row);
     }
 
     public static function isValid(int $menu): bool
     {
-        return (bool) \Omp\Internal\menu_is_valid($menu);
+        return \Omp\Internal\menu_is_valid($menu);
     }
 
     public static function setColumnHeader(int $menu, int $column, string $headerTitle): bool
     {
-        return (bool) \Omp\Internal\menu_set_column_header($menu, $column, $headerTitle);
+        return \Omp\Internal\menu_set_column_header($menu, $column, $headerTitle);
     }
 
     public static function showForPlayer(int $menu, int $player): bool
     {
-        return (bool) \Omp\Internal\menu_show_for_player($menu, $player);
+        return \Omp\Internal\menu_show_for_player($menu, $player);
     }
 
 }

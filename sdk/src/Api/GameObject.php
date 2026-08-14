@@ -10,185 +10,185 @@ final class GameObject
 {
     public static function attachToObject(int $object, int $objAttachedTo, float $offsetX, float $offsetY, float $offsetZ, float $rotationX, float $rotationY, float $rotationZ, bool $syncRotation): bool
     {
-        return (bool) \Omp\Internal\object_attach_to_object($object, $objAttachedTo, $offsetX, $offsetY, $offsetZ, $rotationX, $rotationY, $rotationZ, $syncRotation);
+        return \Omp\Internal\object_attach_to_object($object, $objAttachedTo, $offsetX, $offsetY, $offsetZ, $rotationX, $rotationY, $rotationZ, $syncRotation);
     }
 
     public static function attachToPlayer(int $object, int $player, float $offsetX, float $offsetY, float $offsetZ, float $rotationX, float $rotationY, float $rotationZ): bool
     {
-        return (bool) \Omp\Internal\object_attach_to_player($object, $player, $offsetX, $offsetY, $offsetZ, $rotationX, $rotationY, $rotationZ);
+        return \Omp\Internal\object_attach_to_player($object, $player, $offsetX, $offsetY, $offsetZ, $rotationX, $rotationY, $rotationZ);
     }
 
     public static function attachToVehicle(int $object, int $vehicle, float $offsetX, float $offsetY, float $offsetZ, float $rotationX, float $rotationY, float $rotationZ): bool
     {
-        return (bool) \Omp\Internal\object_attach_to_vehicle($object, $vehicle, $offsetX, $offsetY, $offsetZ, $rotationX, $rotationY, $rotationZ);
+        return \Omp\Internal\object_attach_to_vehicle($object, $vehicle, $offsetX, $offsetY, $offsetZ, $rotationX, $rotationY, $rotationZ);
     }
 
     public static function beginEditing(int $player, int $object): bool
     {
-        return (bool) \Omp\Internal\object_begin_editing($player, $object);
+        return \Omp\Internal\object_begin_editing($player, $object);
     }
 
     public static function beginSelecting(int $player): bool
     {
-        return (bool) \Omp\Internal\object_begin_selecting($player);
+        return \Omp\Internal\object_begin_selecting($player);
     }
 
     public static function create(int $modelid, float $x, float $y, float $z, float $rotationX, float $rotationY, float $rotationZ, float $drawDistance): int
     {
-        return (int) \Omp\Internal\object_create($modelid, $x, $y, $z, $rotationX, $rotationY, $rotationZ, $drawDistance);
+        return \Omp\Internal\object_create($modelid, $x, $y, $z, $rotationX, $rotationY, $rotationZ, $drawDistance);
     }
 
     public static function destroy(int $object): bool
     {
-        return (bool) \Omp\Internal\object_destroy($object);
+        return \Omp\Internal\object_destroy($object);
     }
 
     public static function endEditing(int $player): bool
     {
-        return (bool) \Omp\Internal\object_end_editing($player);
+        return \Omp\Internal\object_end_editing($player);
     }
 
     public static function fromId(int $objectid): int
     {
-        return (int) \Omp\Internal\object_from_id($objectid);
+        return \Omp\Internal\object_from_id($objectid);
     }
 
     /** @return array{int, int, int} */
     public static function getAttachedData(int $object): array
     {
-        return (array) \Omp\Internal\object_get_attached_data($object);
+        return \Omp\Internal\object_get_attached_data($object);
     }
 
     /** @return array{float, float, float, float, float, float} */
     public static function getAttachedOffset(int $object): array
     {
-        return (array) \Omp\Internal\object_get_attached_offset($object);
+        return \Omp\Internal\object_get_attached_offset($object);
     }
 
     public static function getDrawDistance(int $object): float
     {
-        return (float) \Omp\Internal\object_get_draw_distance($object);
+        return \Omp\Internal\object_get_draw_distance($object);
     }
 
     public static function getId(int $object): int
     {
-        return (int) \Omp\Internal\object_get_id($object);
+        return \Omp\Internal\object_get_id($object);
     }
 
     /** @return array{int, string, string, int} */
     public static function getMaterial(int $object, int $materialIndex): array
     {
-        return (array) \Omp\Internal\object_get_material($object, $materialIndex);
+        return \Omp\Internal\object_get_material($object, $materialIndex);
     }
 
     /** @return array{string, int, string, int, bool, int, int, int} */
     public static function getMaterialText(int $object, int $materialIndex): array
     {
-        return (array) \Omp\Internal\object_get_material_text($object, $materialIndex);
+        return \Omp\Internal\object_get_material_text($object, $materialIndex);
     }
 
     public static function getModel(int $object): int
     {
-        return (int) \Omp\Internal\object_get_model($object);
+        return \Omp\Internal\object_get_model($object);
     }
 
     public static function getMoveSpeed(int $object): float
     {
-        return (float) \Omp\Internal\object_get_move_speed($object);
+        return \Omp\Internal\object_get_move_speed($object);
     }
 
     /** @return array{float, float, float} */
     public static function getMovingTargetPos(int $object): array
     {
-        return (array) \Omp\Internal\object_get_moving_target_pos($object);
+        return \Omp\Internal\object_get_moving_target_pos($object);
     }
 
     /** @return array{float, float, float} */
     public static function getMovingTargetRot(int $object): array
     {
-        return (array) \Omp\Internal\object_get_moving_target_rot($object);
+        return \Omp\Internal\object_get_moving_target_rot($object);
     }
 
     /** @return array{float, float, float} */
     public static function getPos(int $object): array
     {
-        return (array) \Omp\Internal\object_get_pos($object);
+        return \Omp\Internal\object_get_pos($object);
     }
 
     /** @return array{float, float, float} */
     public static function getRot(int $object): array
     {
-        return (array) \Omp\Internal\object_get_rot($object);
+        return \Omp\Internal\object_get_rot($object);
     }
 
     public static function getSyncRotation(int $object): bool
     {
-        return (bool) \Omp\Internal\object_get_sync_rotation($object);
+        return \Omp\Internal\object_get_sync_rotation($object);
     }
 
     public static function getType(int $player, int $objectid): int
     {
-        return (int) \Omp\Internal\object_get_type($player, $objectid);
+        return \Omp\Internal\object_get_type($player, $objectid);
     }
 
     public static function isMaterialSlotUsed(int $object, int $materialIndex): bool
     {
-        return (bool) \Omp\Internal\object_is_material_slot_used($object, $materialIndex);
+        return \Omp\Internal\object_is_material_slot_used($object, $materialIndex);
     }
 
     public static function isMoving(int $object): bool
     {
-        return (bool) \Omp\Internal\object_is_moving($object);
+        return \Omp\Internal\object_is_moving($object);
     }
 
     public static function isObjectNoCameraCollision(int $object): bool
     {
-        return (bool) \Omp\Internal\object_is_object_no_camera_collision($object);
+        return \Omp\Internal\object_is_object_no_camera_collision($object);
     }
 
     public static function isValid(int $object): bool
     {
-        return (bool) \Omp\Internal\object_is_valid($object);
+        return \Omp\Internal\object_is_valid($object);
     }
 
     public static function move(int $object, float $x, float $y, float $z, float $speed, float $rotationX, float $rotationY, float $rotationZ): int
     {
-        return (int) \Omp\Internal\object_move($object, $x, $y, $z, $speed, $rotationX, $rotationY, $rotationZ);
+        return \Omp\Internal\object_move($object, $x, $y, $z, $speed, $rotationX, $rotationY, $rotationZ);
     }
 
     public static function setDefaultCameraCollision(bool $disable): bool
     {
-        return (bool) \Omp\Internal\object_set_default_camera_collision($disable);
+        return \Omp\Internal\object_set_default_camera_collision($disable);
     }
 
     public static function setMaterial(int $object, int $materialIndex, int $modelId, string $textureLibrary, string $textureName, int $materialColor): bool
     {
-        return (bool) \Omp\Internal\object_set_material($object, $materialIndex, $modelId, $textureLibrary, $textureName, $materialColor);
+        return \Omp\Internal\object_set_material($object, $materialIndex, $modelId, $textureLibrary, $textureName, $materialColor);
     }
 
     public static function setMaterialText(int $object, string $text, int $materialIndex, int $materialSize, string $fontface, int $fontsize, bool $bold, int $fontColor, int $backgroundColor, int $textalignment): bool
     {
-        return (bool) \Omp\Internal\object_set_material_text($object, $text, $materialIndex, $materialSize, $fontface, $fontsize, $bold, $fontColor, $backgroundColor, $textalignment);
+        return \Omp\Internal\object_set_material_text($object, $text, $materialIndex, $materialSize, $fontface, $fontsize, $bold, $fontColor, $backgroundColor, $textalignment);
     }
 
     public static function setNoCameraCollision(int $object): bool
     {
-        return (bool) \Omp\Internal\object_set_no_camera_collision($object);
+        return \Omp\Internal\object_set_no_camera_collision($object);
     }
 
     public static function setPos(int $object, float $x, float $y, float $z): bool
     {
-        return (bool) \Omp\Internal\object_set_pos($object, $x, $y, $z);
+        return \Omp\Internal\object_set_pos($object, $x, $y, $z);
     }
 
     public static function setRot(int $object, float $rotationX, float $rotationY, float $rotationZ): bool
     {
-        return (bool) \Omp\Internal\object_set_rot($object, $rotationX, $rotationY, $rotationZ);
+        return \Omp\Internal\object_set_rot($object, $rotationX, $rotationY, $rotationZ);
     }
 
     public static function stop(int $object): bool
     {
-        return (bool) \Omp\Internal\object_stop($object);
+        return \Omp\Internal\object_stop($object);
     }
 
 }

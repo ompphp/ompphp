@@ -10,28 +10,28 @@ final class RaceCheckpoint
 {
     public static function disable(int $player): bool
     {
-        return (bool) \Omp\Internal\race_checkpoint_disable($player);
+        return \Omp\Internal\race_checkpoint_disable($player);
     }
 
     /** @return array{float, float, float, float, float, float, float} */
     public static function get(int $player): array
     {
-        return (array) \Omp\Internal\race_checkpoint_get($player);
+        return \Omp\Internal\race_checkpoint_get($player);
     }
 
     public static function isActive(int $player): bool
     {
-        return (bool) \Omp\Internal\race_checkpoint_is_active($player);
+        return \Omp\Internal\race_checkpoint_is_active($player);
     }
 
     public static function isPlayerIn(int $player): bool
     {
-        return (bool) \Omp\Internal\race_checkpoint_is_player_in($player);
+        return \Omp\Internal\race_checkpoint_is_player_in($player);
     }
 
     public static function set(int $player, int $type, float $x, float $y, float $z, float $nextX, float $nextY, float $nextZ, float $radius): bool
     {
-        return (bool) \Omp\Internal\race_checkpoint_set($player, $type, $x, $y, $z, $nextX, $nextY, $nextZ, $radius);
+        return \Omp\Internal\race_checkpoint_set($player, $type, $x, $y, $z, $nextX, $nextY, $nextZ, $radius);
     }
 
 }

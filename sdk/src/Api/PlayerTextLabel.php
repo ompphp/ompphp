@@ -10,79 +10,79 @@ final class PlayerTextLabel
 {
     public static function create(int $player, string $text, int $color, float $x, float $y, float $z, float $drawDistance, int $attachedPlayer, int $attachedVehicle, bool $los): int
     {
-        return (int) \Omp\Internal\player_text_label_create($player, $text, $color, $x, $y, $z, $drawDistance, $attachedPlayer, $attachedVehicle, $los);
+        return \Omp\Internal\player_text_label_create($player, $text, $color, $x, $y, $z, $drawDistance, $attachedPlayer, $attachedVehicle, $los);
     }
 
     public static function destroy(int $player, int $textlabel): bool
     {
-        return (bool) \Omp\Internal\player_text_label_destroy($player, $textlabel);
+        return \Omp\Internal\player_text_label_destroy($player, $textlabel);
     }
 
     public static function fromId(int $player, int $textlabelid): int
     {
-        return (int) \Omp\Internal\player_text_label_from_id($player, $textlabelid);
+        return \Omp\Internal\player_text_label_from_id($player, $textlabelid);
     }
 
     /** @return array{int, int} */
     public static function getAttachedData(int $player, int $textlabel): array
     {
-        return (array) \Omp\Internal\player_text_label_get_attached_data($player, $textlabel);
+        return \Omp\Internal\player_text_label_get_attached_data($player, $textlabel);
     }
 
     public static function getColor(int $player, int $textlabel): int
     {
-        return (int) \Omp\Internal\player_text_label_get_color($player, $textlabel);
+        return \Omp\Internal\player_text_label_get_color($player, $textlabel);
     }
 
     public static function getDrawDistance(int $player, int $textlabel): float
     {
-        return (float) \Omp\Internal\player_text_label_get_draw_distance($player, $textlabel);
+        return \Omp\Internal\player_text_label_get_draw_distance($player, $textlabel);
     }
 
     public static function getId(int $player, int $textlabel): int
     {
-        return (int) \Omp\Internal\player_text_label_get_id($player, $textlabel);
+        return \Omp\Internal\player_text_label_get_id($player, $textlabel);
     }
 
     public static function getLos(int $player, int $textlabel): bool
     {
-        return (bool) \Omp\Internal\player_text_label_get_los($player, $textlabel);
+        return \Omp\Internal\player_text_label_get_los($player, $textlabel);
     }
 
     /** @return array{float, float, float} */
     public static function getPos(int $player, int $textlabel): array
     {
-        return (array) \Omp\Internal\player_text_label_get_pos($player, $textlabel);
+        return \Omp\Internal\player_text_label_get_pos($player, $textlabel);
     }
 
     public static function getText(int $player, int $textlabel): string
     {
-        return (string) \Omp\Internal\player_text_label_get_text($player, $textlabel);
+        return \Omp\Internal\player_text_label_get_text($player, $textlabel);
     }
 
     public static function getVirtualWorld(int $player): int
     {
-        return (int) \Omp\Internal\player_text_label_get_virtual_world($player);
+        return \Omp\Internal\player_text_label_get_virtual_world($player);
     }
 
     public static function isValid(int $player, int $textlabel): bool
     {
-        return (bool) \Omp\Internal\player_text_label_is_valid($player, $textlabel);
+        return \Omp\Internal\player_text_label_is_valid($player, $textlabel);
     }
 
     public static function setDrawDistance(int $player, int $textlabel, float $distance): bool
     {
-        return (bool) \Omp\Internal\player_text_label_set_draw_distance($player, $textlabel, $distance);
+        return \Omp\Internal\player_text_label_set_draw_distance($player, $textlabel, $distance);
     }
 
     public static function setLos(int $player, int $textlabel, bool $status): bool
     {
-        return (bool) \Omp\Internal\player_text_label_set_los($player, $textlabel, $status);
+        return \Omp\Internal\player_text_label_set_los($player, $textlabel, $status);
     }
 
     public static function updateText(int $player, int $textlabel, int $color, string $text): bool
     {
-        return (bool) \Omp\Internal\player_text_label_update_text($player, $textlabel, $color, $text);
+        return \Omp\Internal\player_text_label_update_text($player, $textlabel, $color, $text);
     }
 
 }

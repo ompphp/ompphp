@@ -10,22 +10,22 @@ final class Config
 {
     public static function getAsBool(string $cvar): bool
     {
-        return (bool) \Omp\Internal\config_get_as_bool($cvar);
+        return \Omp\Internal\config_get_as_bool($cvar);
     }
 
     public static function getAsFloat(string $cvar): float
     {
-        return (float) \Omp\Internal\config_get_as_float($cvar);
+        return \Omp\Internal\config_get_as_float($cvar);
     }
 
     public static function getAsInt(string $cvar): int
     {
-        return (int) \Omp\Internal\config_get_as_int($cvar);
+        return \Omp\Internal\config_get_as_int($cvar);
     }
 
     public static function getAsString(string $cvar): string
     {
-        return (string) \Omp\Internal\config_get_as_string($cvar);
+        return \Omp\Internal\config_get_as_string($cvar);
     }
 
 }

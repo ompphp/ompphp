@@ -232,8 +232,7 @@ func generatePublicAPI(outDir string, m model.Model) (int, error) {
 			if returnType == "void" {
 				fmt.Fprintf(&out, "        %s;\n", call)
 			} else {
-				cast := publicReturnCast(returnType)
-				fmt.Fprintf(&out, "        return %s%s;\n", cast, call)
+				fmt.Fprintf(&out, "        return %s;\n", call)
 			}
 			out.WriteString("    }\n\n")
 			count++
@@ -265,15 +264,6 @@ func publicReturnType(function model.Function, outputs []model.Parameter) string
 		return phpType(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(outputs[0].Type), "*")))
 	}
 	return phpType(function.ReturnType)
-}
-
-func publicReturnCast(returnType string) string {
-	switch returnType {
-	case "bool", "int", "float", "string", "array":
-		return "(" + returnType + ") "
-	default:
-		return ""
-	}
 }
 
 func lowerFirst(value string) string {

@@ -10,756 +10,756 @@ final class NPC
 {
     public static function addPointToPath(int $pathId, float $x, float $y, float $z, float $stopRange): bool
     {
-        return (bool) \Omp\Internal\npc_add_point_to_path($pathId, $x, $y, $z, $stopRange);
+        return \Omp\Internal\npc_add_point_to_path($pathId, $x, $y, $z, $stopRange);
     }
 
     public static function aimAt(int $npc, float $x, float $y, float $z, bool $shoot, int $shootDelay, bool $updateAngle, float $offsetFromX, float $offsetFromY, float $offsetFromZ, int $checkInBetweenFlags): bool
     {
-        return (bool) \Omp\Internal\npc_aim_at($npc, $x, $y, $z, $shoot, $shootDelay, $updateAngle, $offsetFromX, $offsetFromY, $offsetFromZ, $checkInBetweenFlags);
+        return \Omp\Internal\npc_aim_at($npc, $x, $y, $z, $shoot, $shootDelay, $updateAngle, $offsetFromX, $offsetFromY, $offsetFromZ, $checkInBetweenFlags);
     }
 
     public static function aimAtPlayer(int $npc, int $atPlayer, bool $shoot, int $shootDelay, bool $updateAngle, float $offsetX, float $offsetY, float $offsetZ, float $offsetFromX, float $offsetFromY, float $offsetFromZ, int $checkInBetweenFlags): bool
     {
-        return (bool) \Omp\Internal\npc_aim_at_player($npc, $atPlayer, $shoot, $shootDelay, $updateAngle, $offsetX, $offsetY, $offsetZ, $offsetFromX, $offsetFromY, $offsetFromZ, $checkInBetweenFlags);
+        return \Omp\Internal\npc_aim_at_player($npc, $atPlayer, $shoot, $shootDelay, $updateAngle, $offsetX, $offsetY, $offsetZ, $offsetFromX, $offsetFromY, $offsetFromZ, $checkInBetweenFlags);
     }
 
     public static function applyAnimation(int $npc, string $animlib, string $animname, float $delta, bool $loop, bool $lockX, bool $lockY, bool $freeze, int $time): bool
     {
-        return (bool) \Omp\Internal\npc_apply_animation($npc, $animlib, $animname, $delta, $loop, $lockX, $lockY, $freeze, $time);
+        return \Omp\Internal\npc_apply_animation($npc, $animlib, $animname, $delta, $loop, $lockX, $lockY, $freeze, $time);
     }
 
     public static function changeNode(int $npc, int $nodeId, int $linkId): int
     {
-        return (int) \Omp\Internal\npc_change_node($npc, $nodeId, $linkId);
+        return \Omp\Internal\npc_change_node($npc, $nodeId, $linkId);
     }
 
     public static function clearAnimations(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_clear_animations($npc);
+        return \Omp\Internal\npc_clear_animations($npc);
     }
 
     public static function clearPath(int $pathId): bool
     {
-        return (bool) \Omp\Internal\npc_clear_path($pathId);
+        return \Omp\Internal\npc_clear_path($pathId);
     }
 
     public static function closeNode(int $nodeId): bool
     {
-        return (bool) \Omp\Internal\npc_close_node($nodeId);
+        return \Omp\Internal\npc_close_node($nodeId);
     }
 
     public static function connect(string $name, string $script): bool
     {
-        return (bool) \Omp\Internal\npc_connect($name, $script);
+        return \Omp\Internal\npc_connect($name, $script);
     }
 
     public static function create(string $name): int
     {
-        return (int) \Omp\Internal\npc_create($name);
+        return \Omp\Internal\npc_create($name);
     }
 
     public static function createPath(): int
     {
-        return (int) \Omp\Internal\npc_create_path();
+        return \Omp\Internal\npc_create_path();
     }
 
     public static function destroy(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_destroy($npc);
+        return \Omp\Internal\npc_destroy($npc);
     }
 
     public static function destroyAllPath(): bool
     {
-        return (bool) \Omp\Internal\npc_destroy_all_path();
+        return \Omp\Internal\npc_destroy_all_path();
     }
 
     public static function destroyPath(int $pathId): bool
     {
-        return (bool) \Omp\Internal\npc_destroy_path($pathId);
+        return \Omp\Internal\npc_destroy_path($pathId);
     }
 
     public static function enableInfiniteAmmo(int $npc, bool $enable): bool
     {
-        return (bool) \Omp\Internal\npc_enable_infinite_ammo($npc, $enable);
+        return \Omp\Internal\npc_enable_infinite_ammo($npc, $enable);
     }
 
     public static function enableReloading(int $npc, bool $enable): bool
     {
-        return (bool) \Omp\Internal\npc_enable_reloading($npc, $enable);
+        return \Omp\Internal\npc_enable_reloading($npc, $enable);
     }
 
     public static function enterVehicle(int $npc, int $vehicle, int $seatId, int $moveType): bool
     {
-        return (bool) \Omp\Internal\npc_enter_vehicle($npc, $vehicle, $seatId, $moveType);
+        return \Omp\Internal\npc_enter_vehicle($npc, $vehicle, $seatId, $moveType);
     }
 
     public static function exitVehicle(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_exit_vehicle($npc);
+        return \Omp\Internal\npc_exit_vehicle($npc);
     }
 
     public static function fromId(int $npcid): int
     {
-        return (int) \Omp\Internal\npc_from_id($npcid);
+        return \Omp\Internal\npc_from_id($npcid);
     }
 
     /** @return list<int> */
     public static function getAll(int $maxNPCs): array
     {
-        return (array) \Omp\Internal\npc_get_all($maxNPCs);
+        return \Omp\Internal\npc_get_all($maxNPCs);
     }
 
     public static function getAmmo(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_ammo($npc);
+        return \Omp\Internal\npc_get_ammo($npc);
     }
 
     public static function getAmmoInClip(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_ammo_in_clip($npc);
+        return \Omp\Internal\npc_get_ammo_in_clip($npc);
     }
 
     /** @return array{int, float, bool, bool, bool, bool, int} */
     public static function getAnimation(int $npc): array
     {
-        return (array) \Omp\Internal\npc_get_animation($npc);
+        return \Omp\Internal\npc_get_animation($npc);
     }
 
     public static function getArmour(int $npc): float
     {
-        return (float) \Omp\Internal\npc_get_armour($npc);
+        return \Omp\Internal\npc_get_armour($npc);
     }
 
     public static function getCurrentPathPointIndex(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_current_path_point_index($npc);
+        return \Omp\Internal\npc_get_current_path_point_index($npc);
     }
 
     public static function getEnteringVehicle(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_entering_vehicle($npc);
+        return \Omp\Internal\npc_get_entering_vehicle($npc);
     }
 
     public static function getEnteringVehicleId(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_entering_vehicle_id($npc);
+        return \Omp\Internal\npc_get_entering_vehicle_id($npc);
     }
 
     public static function getEnteringVehicleSeat(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_entering_vehicle_seat($npc);
+        return \Omp\Internal\npc_get_entering_vehicle_seat($npc);
     }
 
     public static function getFacingAngle(int $npc): float
     {
-        return (float) \Omp\Internal\npc_get_facing_angle($npc);
+        return \Omp\Internal\npc_get_facing_angle($npc);
     }
 
     public static function getFightingStyle(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_fighting_style($npc);
+        return \Omp\Internal\npc_get_fighting_style($npc);
     }
 
     public static function getHealth(int $npc): float
     {
-        return (float) \Omp\Internal\npc_get_health($npc);
+        return \Omp\Internal\npc_get_health($npc);
     }
 
     public static function getId(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_id($npc);
+        return \Omp\Internal\npc_get_id($npc);
     }
 
     public static function getInterior(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_interior($npc);
+        return \Omp\Internal\npc_get_interior($npc);
     }
 
     /** @return array{int, int, int} */
     public static function getKeys(int $npc): array
     {
-        return (array) \Omp\Internal\npc_get_keys($npc);
+        return \Omp\Internal\npc_get_keys($npc);
     }
 
     /** @return array{int, int, int} */
     public static function getNodeInfo(int $nodeId): array
     {
-        return (array) \Omp\Internal\npc_get_node_info($nodeId);
+        return \Omp\Internal\npc_get_node_info($nodeId);
     }
 
     public static function getNodePointCount(int $nodeId): int
     {
-        return (int) \Omp\Internal\npc_get_node_point_count($nodeId);
+        return \Omp\Internal\npc_get_node_point_count($nodeId);
     }
 
     /** @return array{float, float, float} */
     public static function getNodePointPosition(int $nodeId): array
     {
-        return (array) \Omp\Internal\npc_get_node_point_position($nodeId);
+        return \Omp\Internal\npc_get_node_point_position($nodeId);
     }
 
     public static function getNodeType(int $nodeId): int
     {
-        return (int) \Omp\Internal\npc_get_node_type($nodeId);
+        return \Omp\Internal\npc_get_node_type($nodeId);
     }
 
     public static function getPathCount(): int
     {
-        return (int) \Omp\Internal\npc_get_path_count();
+        return \Omp\Internal\npc_get_path_count();
     }
 
     /** @return array{float, float, float, float} */
     public static function getPathPoint(int $pathId, int $pointIndex): array
     {
-        return (array) \Omp\Internal\npc_get_path_point($pathId, $pointIndex);
+        return \Omp\Internal\npc_get_path_point($pathId, $pointIndex);
     }
 
     public static function getPathPointCount(int $pathId): int
     {
-        return (int) \Omp\Internal\npc_get_path_point_count($pathId);
+        return \Omp\Internal\npc_get_path_point_count($pathId);
     }
 
     public static function getPlayer(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_player($npc);
+        return \Omp\Internal\npc_get_player($npc);
     }
 
     /** @return array{float, float, float} */
     public static function getPos(int $npc): array
     {
-        return (array) \Omp\Internal\npc_get_pos($npc);
+        return \Omp\Internal\npc_get_pos($npc);
     }
 
     public static function getRecordCount(): int
     {
-        return (int) \Omp\Internal\npc_get_record_count();
+        return \Omp\Internal\npc_get_record_count();
     }
 
     /** @return array{float, float, float} */
     public static function getRot(int $npc): array
     {
-        return (array) \Omp\Internal\npc_get_rot($npc);
+        return \Omp\Internal\npc_get_rot($npc);
     }
 
     public static function getSpecialAction(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_special_action($npc);
+        return \Omp\Internal\npc_get_special_action($npc);
     }
 
     public static function getSurfingObject(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_surfing_object($npc);
+        return \Omp\Internal\npc_get_surfing_object($npc);
     }
 
     /** @return array{float, float, float} */
     public static function getSurfingOffset(int $npc): array
     {
-        return (array) \Omp\Internal\npc_get_surfing_offset($npc);
+        return \Omp\Internal\npc_get_surfing_offset($npc);
     }
 
     public static function getSurfingPlayerObject(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_surfing_player_object($npc);
+        return \Omp\Internal\npc_get_surfing_player_object($npc);
     }
 
     public static function getSurfingVehicle(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_surfing_vehicle($npc);
+        return \Omp\Internal\npc_get_surfing_vehicle($npc);
     }
 
     public static function getVehicle(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_vehicle($npc);
+        return \Omp\Internal\npc_get_vehicle($npc);
     }
 
     public static function getVehicleGearState(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_vehicle_gear_state($npc);
+        return \Omp\Internal\npc_get_vehicle_gear_state($npc);
     }
 
     public static function getVehicleHealth(int $npc): float
     {
-        return (float) \Omp\Internal\npc_get_vehicle_health($npc);
+        return \Omp\Internal\npc_get_vehicle_health($npc);
     }
 
     public static function getVehicleHydraThrusters(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_vehicle_hydra_thrusters($npc);
+        return \Omp\Internal\npc_get_vehicle_hydra_thrusters($npc);
     }
 
     public static function getVehicleId(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_vehicle_id($npc);
+        return \Omp\Internal\npc_get_vehicle_id($npc);
     }
 
     public static function getVehicleSeat(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_vehicle_seat($npc);
+        return \Omp\Internal\npc_get_vehicle_seat($npc);
     }
 
     public static function getVehicleTrainSpeed(int $npc): float
     {
-        return (float) \Omp\Internal\npc_get_vehicle_train_speed($npc);
+        return \Omp\Internal\npc_get_vehicle_train_speed($npc);
     }
 
     public static function getVirtualWorld(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_virtual_world($npc);
+        return \Omp\Internal\npc_get_virtual_world($npc);
     }
 
     public static function getWeapon(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_weapon($npc);
+        return \Omp\Internal\npc_get_weapon($npc);
     }
 
     public static function getWeaponAccuracy(int $npc, int $weapon): float
     {
-        return (float) \Omp\Internal\npc_get_weapon_accuracy($npc, $weapon);
+        return \Omp\Internal\npc_get_weapon_accuracy($npc, $weapon);
     }
 
     public static function getWeaponActualClipSize(int $npc, int $weapon): int
     {
-        return (int) \Omp\Internal\npc_get_weapon_actual_clip_size($npc, $weapon);
+        return \Omp\Internal\npc_get_weapon_actual_clip_size($npc, $weapon);
     }
 
     public static function getWeaponActualReloadTime(int $npc, int $weapon): int
     {
-        return (int) \Omp\Internal\npc_get_weapon_actual_reload_time($npc, $weapon);
+        return \Omp\Internal\npc_get_weapon_actual_reload_time($npc, $weapon);
     }
 
     public static function getWeaponClipSize(int $npc, int $weapon): int
     {
-        return (int) \Omp\Internal\npc_get_weapon_clip_size($npc, $weapon);
+        return \Omp\Internal\npc_get_weapon_clip_size($npc, $weapon);
     }
 
     public static function getWeaponReloadTime(int $npc, int $weapon): int
     {
-        return (int) \Omp\Internal\npc_get_weapon_reload_time($npc, $weapon);
+        return \Omp\Internal\npc_get_weapon_reload_time($npc, $weapon);
     }
 
     public static function getWeaponShootTime(int $npc, int $weapon): int
     {
-        return (int) \Omp\Internal\npc_get_weapon_shoot_time($npc, $weapon);
+        return \Omp\Internal\npc_get_weapon_shoot_time($npc, $weapon);
     }
 
     public static function getWeaponSkillLevel(int $npc, int $skill): int
     {
-        return (int) \Omp\Internal\npc_get_weapon_skill_level($npc, $skill);
+        return \Omp\Internal\npc_get_weapon_skill_level($npc, $skill);
     }
 
     public static function getWeaponState(int $npc): int
     {
-        return (int) \Omp\Internal\npc_get_weapon_state($npc);
+        return \Omp\Internal\npc_get_weapon_state($npc);
     }
 
     public static function hasPathPointInRange(int $pathId, float $x, float $y, float $z, float $radius): bool
     {
-        return (bool) \Omp\Internal\npc_has_path_point_in_range($pathId, $x, $y, $z, $radius);
+        return \Omp\Internal\npc_has_path_point_in_range($pathId, $x, $y, $z, $radius);
     }
 
     public static function isAiming(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_aiming($npc);
+        return \Omp\Internal\npc_is_aiming($npc);
     }
 
     public static function isAimingAtPlayer(int $npc, int $atPlayer): bool
     {
-        return (bool) \Omp\Internal\npc_is_aiming_at_player($npc, $atPlayer);
+        return \Omp\Internal\npc_is_aiming_at_player($npc, $atPlayer);
     }
 
     public static function isAnyStreamedIn(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_any_streamed_in($npc);
+        return \Omp\Internal\npc_is_any_streamed_in($npc);
     }
 
     public static function isDead(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_dead($npc);
+        return \Omp\Internal\npc_is_dead($npc);
     }
 
     public static function isEnteringVehicle(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_entering_vehicle($npc);
+        return \Omp\Internal\npc_is_entering_vehicle($npc);
     }
 
     public static function isInfiniteAmmoEnabled(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_infinite_ammo_enabled($npc);
+        return \Omp\Internal\npc_is_infinite_ammo_enabled($npc);
     }
 
     public static function isInvulnerable(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_invulnerable($npc);
+        return \Omp\Internal\npc_is_invulnerable($npc);
     }
 
     public static function isMeleeAttacking(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_melee_attacking($npc);
+        return \Omp\Internal\npc_is_melee_attacking($npc);
     }
 
     public static function isMoving(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_moving($npc);
+        return \Omp\Internal\npc_is_moving($npc);
     }
 
     public static function isNodeOpen(int $nodeId): bool
     {
-        return (bool) \Omp\Internal\npc_is_node_open($nodeId);
+        return \Omp\Internal\npc_is_node_open($nodeId);
     }
 
     public static function isPlaybackPaused(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_playback_paused($npc);
+        return \Omp\Internal\npc_is_playback_paused($npc);
     }
 
     public static function isPlayingNode(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_playing_node($npc);
+        return \Omp\Internal\npc_is_playing_node($npc);
     }
 
     public static function isPlayingNodePaused(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_playing_node_paused($npc);
+        return \Omp\Internal\npc_is_playing_node_paused($npc);
     }
 
     public static function isPlayingPlayback(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_playing_playback($npc);
+        return \Omp\Internal\npc_is_playing_playback($npc);
     }
 
     public static function isReloadEnabled(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_reload_enabled($npc);
+        return \Omp\Internal\npc_is_reload_enabled($npc);
     }
 
     public static function isReloading(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_reloading($npc);
+        return \Omp\Internal\npc_is_reloading($npc);
     }
 
     public static function isShooting(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_shooting($npc);
+        return \Omp\Internal\npc_is_shooting($npc);
     }
 
     public static function isStreamedIn(int $npc, int $player): bool
     {
-        return (bool) \Omp\Internal\npc_is_streamed_in($npc, $player);
+        return \Omp\Internal\npc_is_streamed_in($npc, $player);
     }
 
     public static function isValid(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_valid($npc);
+        return \Omp\Internal\npc_is_valid($npc);
     }
 
     public static function isValidPath(int $pathId): bool
     {
-        return (bool) \Omp\Internal\npc_is_valid_path($pathId);
+        return \Omp\Internal\npc_is_valid_path($pathId);
     }
 
     public static function isValidRecord(int $recordId): bool
     {
-        return (bool) \Omp\Internal\npc_is_valid_record($recordId);
+        return \Omp\Internal\npc_is_valid_record($recordId);
     }
 
     public static function isVehicleSirenUsed(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_is_vehicle_siren_used($npc);
+        return \Omp\Internal\npc_is_vehicle_siren_used($npc);
     }
 
     public static function loadRecord(string $filePath): int
     {
-        return (int) \Omp\Internal\npc_load_record($filePath);
+        return \Omp\Internal\npc_load_record($filePath);
     }
 
     public static function meleeAttack(int $npc, int $time, bool $secondaryAttack): bool
     {
-        return (bool) \Omp\Internal\npc_melee_attack($npc, $time, $secondaryAttack);
+        return \Omp\Internal\npc_melee_attack($npc, $time, $secondaryAttack);
     }
 
     public static function move(int $npc, float $x, float $y, float $z, int $moveType, float $moveSpeed, float $stopRange): bool
     {
-        return (bool) \Omp\Internal\npc_move($npc, $x, $y, $z, $moveType, $moveSpeed, $stopRange);
+        return \Omp\Internal\npc_move($npc, $x, $y, $z, $moveType, $moveSpeed, $stopRange);
     }
 
     public static function moveByPath(int $npc, int $pathId, int $moveType, float $moveSpeed, bool $reverse): bool
     {
-        return (bool) \Omp\Internal\npc_move_by_path($npc, $pathId, $moveType, $moveSpeed, $reverse);
+        return \Omp\Internal\npc_move_by_path($npc, $pathId, $moveType, $moveSpeed, $reverse);
     }
 
     public static function moveToPlayer(int $npc, int $player, int $moveType, float $moveSpeed, float $stopRange, int $posCheckUpdateDelay, bool $autoRestart): bool
     {
-        return (bool) \Omp\Internal\npc_move_to_player($npc, $player, $moveType, $moveSpeed, $stopRange, $posCheckUpdateDelay, $autoRestart);
+        return \Omp\Internal\npc_move_to_player($npc, $player, $moveType, $moveSpeed, $stopRange, $posCheckUpdateDelay, $autoRestart);
     }
 
     public static function openNode(int $nodeId): bool
     {
-        return (bool) \Omp\Internal\npc_open_node($nodeId);
+        return \Omp\Internal\npc_open_node($nodeId);
     }
 
     public static function pausePlayback(int $npc, bool $paused): bool
     {
-        return (bool) \Omp\Internal\npc_pause_playback($npc, $paused);
+        return \Omp\Internal\npc_pause_playback($npc, $paused);
     }
 
     public static function pausePlayingNode(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_pause_playing_node($npc);
+        return \Omp\Internal\npc_pause_playing_node($npc);
     }
 
     public static function playNode(int $npc, int $nodeId, int $moveType, float $moveSpeed, float $radius, bool $setAngle): bool
     {
-        return (bool) \Omp\Internal\npc_play_node($npc, $nodeId, $moveType, $moveSpeed, $radius, $setAngle);
+        return \Omp\Internal\npc_play_node($npc, $nodeId, $moveType, $moveSpeed, $radius, $setAngle);
     }
 
     public static function putInVehicle(int $npc, int $vehicle, int $seatId): bool
     {
-        return (bool) \Omp\Internal\npc_put_in_vehicle($npc, $vehicle, $seatId);
+        return \Omp\Internal\npc_put_in_vehicle($npc, $vehicle, $seatId);
     }
 
     public static function removeFromVehicle(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_remove_from_vehicle($npc);
+        return \Omp\Internal\npc_remove_from_vehicle($npc);
     }
 
     public static function removePointFromPath(int $pathId, int $pointIndex): bool
     {
-        return (bool) \Omp\Internal\npc_remove_point_from_path($pathId, $pointIndex);
+        return \Omp\Internal\npc_remove_point_from_path($pathId, $pointIndex);
     }
 
     public static function resetAnimation(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_reset_animation($npc);
+        return \Omp\Internal\npc_reset_animation($npc);
     }
 
     public static function resetSurfingData(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_reset_surfing_data($npc);
+        return \Omp\Internal\npc_reset_surfing_data($npc);
     }
 
     public static function respawn(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_respawn($npc);
+        return \Omp\Internal\npc_respawn($npc);
     }
 
     public static function resumePlayingNode(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_resume_playing_node($npc);
+        return \Omp\Internal\npc_resume_playing_node($npc);
     }
 
     public static function setAmmo(int $npc, int $ammo): bool
     {
-        return (bool) \Omp\Internal\npc_set_ammo($npc, $ammo);
+        return \Omp\Internal\npc_set_ammo($npc, $ammo);
     }
 
     public static function setAmmoInClip(int $npc, int $ammo): bool
     {
-        return (bool) \Omp\Internal\npc_set_ammo_in_clip($npc, $ammo);
+        return \Omp\Internal\npc_set_ammo_in_clip($npc, $ammo);
     }
 
     public static function setAnimation(int $npc, int $animationId, float $delta, bool $loop, bool $lockX, bool $lockY, bool $freeze, int $time): bool
     {
-        return (bool) \Omp\Internal\npc_set_animation($npc, $animationId, $delta, $loop, $lockX, $lockY, $freeze, $time);
+        return \Omp\Internal\npc_set_animation($npc, $animationId, $delta, $loop, $lockX, $lockY, $freeze, $time);
     }
 
     public static function setArmour(int $npc, float $armour): bool
     {
-        return (bool) \Omp\Internal\npc_set_armour($npc, $armour);
+        return \Omp\Internal\npc_set_armour($npc, $armour);
     }
 
     public static function setFacingAngle(int $npc, float $angle): bool
     {
-        return (bool) \Omp\Internal\npc_set_facing_angle($npc, $angle);
+        return \Omp\Internal\npc_set_facing_angle($npc, $angle);
     }
 
     public static function setFightingStyle(int $npc, int $style): bool
     {
-        return (bool) \Omp\Internal\npc_set_fighting_style($npc, $style);
+        return \Omp\Internal\npc_set_fighting_style($npc, $style);
     }
 
     public static function setHealth(int $npc, float $health): bool
     {
-        return (bool) \Omp\Internal\npc_set_health($npc, $health);
+        return \Omp\Internal\npc_set_health($npc, $health);
     }
 
     public static function setInterior(int $npc, int $interior): bool
     {
-        return (bool) \Omp\Internal\npc_set_interior($npc, $interior);
+        return \Omp\Internal\npc_set_interior($npc, $interior);
     }
 
     public static function setInvulnerable(int $npc, bool $toggle): bool
     {
-        return (bool) \Omp\Internal\npc_set_invulnerable($npc, $toggle);
+        return \Omp\Internal\npc_set_invulnerable($npc, $toggle);
     }
 
     public static function setKeys(int $npc, int $upAndDown, int $leftAndRight, int $keys): bool
     {
-        return (bool) \Omp\Internal\npc_set_keys($npc, $upAndDown, $leftAndRight, $keys);
+        return \Omp\Internal\npc_set_keys($npc, $upAndDown, $leftAndRight, $keys);
     }
 
     public static function setNodePoint(int $nodeId, int $pointId): bool
     {
-        return (bool) \Omp\Internal\npc_set_node_point($nodeId, $pointId);
+        return \Omp\Internal\npc_set_node_point($nodeId, $pointId);
     }
 
     public static function setPos(int $npc, float $x, float $y, float $z): bool
     {
-        return (bool) \Omp\Internal\npc_set_pos($npc, $x, $y, $z);
+        return \Omp\Internal\npc_set_pos($npc, $x, $y, $z);
     }
 
     public static function setRot(int $npc, float $rx, float $ry, float $rz): bool
     {
-        return (bool) \Omp\Internal\npc_set_rot($npc, $rx, $ry, $rz);
+        return \Omp\Internal\npc_set_rot($npc, $rx, $ry, $rz);
     }
 
     public static function setSkin(int $npc, int $model): bool
     {
-        return (bool) \Omp\Internal\npc_set_skin($npc, $model);
+        return \Omp\Internal\npc_set_skin($npc, $model);
     }
 
     public static function setSpecialAction(int $npc, int $action): bool
     {
-        return (bool) \Omp\Internal\npc_set_special_action($npc, $action);
+        return \Omp\Internal\npc_set_special_action($npc, $action);
     }
 
     public static function setSurfingObject(int $npc, int $object): bool
     {
-        return (bool) \Omp\Internal\npc_set_surfing_object($npc, $object);
+        return \Omp\Internal\npc_set_surfing_object($npc, $object);
     }
 
     public static function setSurfingOffset(int $npc, float $x, float $y, float $z): bool
     {
-        return (bool) \Omp\Internal\npc_set_surfing_offset($npc, $x, $y, $z);
+        return \Omp\Internal\npc_set_surfing_offset($npc, $x, $y, $z);
     }
 
     public static function setSurfingPlayerObject(int $npc, int $player, int $objectId): bool
     {
-        return (bool) \Omp\Internal\npc_set_surfing_player_object($npc, $player, $objectId);
+        return \Omp\Internal\npc_set_surfing_player_object($npc, $player, $objectId);
     }
 
     public static function setSurfingVehicle(int $npc, int $vehicle): bool
     {
-        return (bool) \Omp\Internal\npc_set_surfing_vehicle($npc, $vehicle);
+        return \Omp\Internal\npc_set_surfing_vehicle($npc, $vehicle);
     }
 
     public static function setVehicleGearState(int $npc, int $gearState): bool
     {
-        return (bool) \Omp\Internal\npc_set_vehicle_gear_state($npc, $gearState);
+        return \Omp\Internal\npc_set_vehicle_gear_state($npc, $gearState);
     }
 
     public static function setVehicleHealth(int $npc, float $health): bool
     {
-        return (bool) \Omp\Internal\npc_set_vehicle_health($npc, $health);
+        return \Omp\Internal\npc_set_vehicle_health($npc, $health);
     }
 
     public static function setVehicleHydraThrusters(int $npc, int $direction): bool
     {
-        return (bool) \Omp\Internal\npc_set_vehicle_hydra_thrusters($npc, $direction);
+        return \Omp\Internal\npc_set_vehicle_hydra_thrusters($npc, $direction);
     }
 
     public static function setVehicleTrainSpeed(int $npc, float $speed): bool
     {
-        return (bool) \Omp\Internal\npc_set_vehicle_train_speed($npc, $speed);
+        return \Omp\Internal\npc_set_vehicle_train_speed($npc, $speed);
     }
 
     public static function setVirtualWorld(int $npc, int $virtualWorld): bool
     {
-        return (bool) \Omp\Internal\npc_set_virtual_world($npc, $virtualWorld);
+        return \Omp\Internal\npc_set_virtual_world($npc, $virtualWorld);
     }
 
     public static function setWeapon(int $npc, int $weapon): bool
     {
-        return (bool) \Omp\Internal\npc_set_weapon($npc, $weapon);
+        return \Omp\Internal\npc_set_weapon($npc, $weapon);
     }
 
     public static function setWeaponAccuracy(int $npc, int $weapon, float $accuracy): bool
     {
-        return (bool) \Omp\Internal\npc_set_weapon_accuracy($npc, $weapon, $accuracy);
+        return \Omp\Internal\npc_set_weapon_accuracy($npc, $weapon, $accuracy);
     }
 
     public static function setWeaponClipSize(int $npc, int $weapon, int $size): bool
     {
-        return (bool) \Omp\Internal\npc_set_weapon_clip_size($npc, $weapon, $size);
+        return \Omp\Internal\npc_set_weapon_clip_size($npc, $weapon, $size);
     }
 
     public static function setWeaponReloadTime(int $npc, int $weapon, int $time): bool
     {
-        return (bool) \Omp\Internal\npc_set_weapon_reload_time($npc, $weapon, $time);
+        return \Omp\Internal\npc_set_weapon_reload_time($npc, $weapon, $time);
     }
 
     public static function setWeaponShootTime(int $npc, int $weapon, int $time): bool
     {
-        return (bool) \Omp\Internal\npc_set_weapon_shoot_time($npc, $weapon, $time);
+        return \Omp\Internal\npc_set_weapon_shoot_time($npc, $weapon, $time);
     }
 
     public static function setWeaponSkillLevel(int $npc, int $skill, int $level): bool
     {
-        return (bool) \Omp\Internal\npc_set_weapon_skill_level($npc, $skill, $level);
+        return \Omp\Internal\npc_set_weapon_skill_level($npc, $skill, $level);
     }
 
     public static function shoot(int $npc, int $weapon, int $hitId, int $hitType, float $endX, float $endY, float $endZ, float $offsetX, float $offsetY, float $offsetZ, bool $isHit, int $checkInBetweenFlags): bool
     {
-        return (bool) \Omp\Internal\npc_shoot($npc, $weapon, $hitId, $hitType, $endX, $endY, $endZ, $offsetX, $offsetY, $offsetZ, $isHit, $checkInBetweenFlags);
+        return \Omp\Internal\npc_shoot($npc, $weapon, $hitId, $hitType, $endX, $endY, $endZ, $offsetX, $offsetY, $offsetZ, $isHit, $checkInBetweenFlags);
     }
 
     public static function spawn(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_spawn($npc);
+        return \Omp\Internal\npc_spawn($npc);
     }
 
     public static function startPlayback(int $npc, string $recordName, bool $autoUnload, float $startPosX, float $startPosY, float $startPosZ, float $startRotX, float $startRotY, float $startRotZ): bool
     {
-        return (bool) \Omp\Internal\npc_start_playback($npc, $recordName, $autoUnload, $startPosX, $startPosY, $startPosZ, $startRotX, $startRotY, $startRotZ);
+        return \Omp\Internal\npc_start_playback($npc, $recordName, $autoUnload, $startPosX, $startPosY, $startPosZ, $startRotX, $startRotY, $startRotZ);
     }
 
     public static function startPlaybackEx(int $npc, int $recordId, bool $autoUnload, float $startPosX, float $startPosY, float $startPosZ, float $startRotX, float $startRotY, float $startRotZ): bool
     {
-        return (bool) \Omp\Internal\npc_start_playback_ex($npc, $recordId, $autoUnload, $startPosX, $startPosY, $startPosZ, $startRotX, $startRotY, $startRotZ);
+        return \Omp\Internal\npc_start_playback_ex($npc, $recordId, $autoUnload, $startPosX, $startPosY, $startPosZ, $startRotX, $startRotY, $startRotZ);
     }
 
     public static function stopAim(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_stop_aim($npc);
+        return \Omp\Internal\npc_stop_aim($npc);
     }
 
     public static function stopMeleeAttack(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_stop_melee_attack($npc);
+        return \Omp\Internal\npc_stop_melee_attack($npc);
     }
 
     public static function stopMove(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_stop_move($npc);
+        return \Omp\Internal\npc_stop_move($npc);
     }
 
     public static function stopPlayback(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_stop_playback($npc);
+        return \Omp\Internal\npc_stop_playback($npc);
     }
 
     public static function stopPlayingNode(int $npc): bool
     {
-        return (bool) \Omp\Internal\npc_stop_playing_node($npc);
+        return \Omp\Internal\npc_stop_playing_node($npc);
     }
 
     public static function unloadAllRecords(): bool
     {
-        return (bool) \Omp\Internal\npc_unload_all_records();
+        return \Omp\Internal\npc_unload_all_records();
     }
 
     public static function unloadRecord(int $recordId): bool
     {
-        return (bool) \Omp\Internal\npc_unload_record($recordId);
+        return \Omp\Internal\npc_unload_record($recordId);
     }
 
     public static function updateNodePoint(int $npc, int $pointId): bool
     {
-        return (bool) \Omp\Internal\npc_update_node_point($npc, $pointId);
+        return \Omp\Internal\npc_update_node_point($npc, $pointId);
     }
 
     public static function useVehicleSiren(int $npc, bool $use): bool
     {
-        return (bool) \Omp\Internal\npc_use_vehicle_siren($npc, $use);
+        return \Omp\Internal\npc_use_vehicle_siren($npc, $use);
     }
 
 }

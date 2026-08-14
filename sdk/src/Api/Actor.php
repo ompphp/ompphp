@@ -10,115 +10,115 @@ final class Actor
 {
     public static function applyAnimation(int $actor, string $name, string $library, float $delta, bool $loop, bool $lockX, bool $lockY, bool $freeze, int $time): bool
     {
-        return (bool) \Omp\Internal\actor_apply_animation($actor, $name, $library, $delta, $loop, $lockX, $lockY, $freeze, $time);
+        return \Omp\Internal\actor_apply_animation($actor, $name, $library, $delta, $loop, $lockX, $lockY, $freeze, $time);
     }
 
     public static function clearAnimations(int $actor): bool
     {
-        return (bool) \Omp\Internal\actor_clear_animations($actor);
+        return \Omp\Internal\actor_clear_animations($actor);
     }
 
     public static function create(int $model, float $x, float $y, float $z, float $rot): int
     {
-        return (int) \Omp\Internal\actor_create($model, $x, $y, $z, $rot);
+        return \Omp\Internal\actor_create($model, $x, $y, $z, $rot);
     }
 
     public static function destroy(int $actor): bool
     {
-        return (bool) \Omp\Internal\actor_destroy($actor);
+        return \Omp\Internal\actor_destroy($actor);
     }
 
     public static function fromId(int $actorid): int
     {
-        return (int) \Omp\Internal\actor_from_id($actorid);
+        return \Omp\Internal\actor_from_id($actorid);
     }
 
     /** @return array{string, string, float, bool, bool, bool, bool, int} */
     public static function getAnimation(int $actor): array
     {
-        return (array) \Omp\Internal\actor_get_animation($actor);
+        return \Omp\Internal\actor_get_animation($actor);
     }
 
     public static function getFacingAngle(int $actor): float
     {
-        return (float) \Omp\Internal\actor_get_facing_angle($actor);
+        return \Omp\Internal\actor_get_facing_angle($actor);
     }
 
     public static function getHealth(int $actor): float
     {
-        return (float) \Omp\Internal\actor_get_health($actor);
+        return \Omp\Internal\actor_get_health($actor);
     }
 
     public static function getId(int $actor): int
     {
-        return (int) \Omp\Internal\actor_get_id($actor);
+        return \Omp\Internal\actor_get_id($actor);
     }
 
     /** @return array{float, float, float} */
     public static function getPos(int $actor): array
     {
-        return (array) \Omp\Internal\actor_get_pos($actor);
+        return \Omp\Internal\actor_get_pos($actor);
     }
 
     public static function getSkin(int $actor): int
     {
-        return (int) \Omp\Internal\actor_get_skin($actor);
+        return \Omp\Internal\actor_get_skin($actor);
     }
 
     /** @return array{float, float, float, float, int} */
     public static function getSpawnInfo(int $actor): array
     {
-        return (array) \Omp\Internal\actor_get_spawn_info($actor);
+        return \Omp\Internal\actor_get_spawn_info($actor);
     }
 
     public static function getVirtualWorld(int $actor): int
     {
-        return (int) \Omp\Internal\actor_get_virtual_world($actor);
+        return \Omp\Internal\actor_get_virtual_world($actor);
     }
 
     public static function isInvulnerable(int $actor): bool
     {
-        return (bool) \Omp\Internal\actor_is_invulnerable($actor);
+        return \Omp\Internal\actor_is_invulnerable($actor);
     }
 
     public static function isStreamedInFor(int $actor, int $player): bool
     {
-        return (bool) \Omp\Internal\actor_is_streamed_in_for($actor, $player);
+        return \Omp\Internal\actor_is_streamed_in_for($actor, $player);
     }
 
     public static function isValid(int $actor): bool
     {
-        return (bool) \Omp\Internal\actor_is_valid($actor);
+        return \Omp\Internal\actor_is_valid($actor);
     }
 
     public static function setFacingAngle(int $actor, float $angle): bool
     {
-        return (bool) \Omp\Internal\actor_set_facing_angle($actor, $angle);
+        return \Omp\Internal\actor_set_facing_angle($actor, $angle);
     }
 
     public static function setHealth(int $actor, float $hp): bool
     {
-        return (bool) \Omp\Internal\actor_set_health($actor, $hp);
+        return \Omp\Internal\actor_set_health($actor, $hp);
     }
 
     public static function setInvulnerable(int $actor, bool $toggle): bool
     {
-        return (bool) \Omp\Internal\actor_set_invulnerable($actor, $toggle);
+        return \Omp\Internal\actor_set_invulnerable($actor, $toggle);
     }
 
     public static function setPos(int $actor, float $x, float $y, float $z): bool
     {
-        return (bool) \Omp\Internal\actor_set_pos($actor, $x, $y, $z);
+        return \Omp\Internal\actor_set_pos($actor, $x, $y, $z);
     }
 
     public static function setSkin(int $actor, int $skin): bool
     {
-        return (bool) \Omp\Internal\actor_set_skin($actor, $skin);
+        return \Omp\Internal\actor_set_skin($actor, $skin);
     }
 
     public static function setVirtualWorld(int $actor, int $vw): bool
     {
-        return (bool) \Omp\Internal\actor_set_virtual_world($actor, $vw);
+        return \Omp\Internal\actor_set_virtual_world($actor, $vw);
     }
 
 }

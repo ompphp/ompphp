@@ -7,7 +7,7 @@ namespace Omp\Internal;
 /** @phpstan-impure */
 function native_call(string $name, mixed ...$arguments): mixed
 {
-    return \ompphp_native_call($name, ...$arguments);
+    return \ompphp_native_call($name, ...array_values($arguments));
 }
 
 function runtime_version(): string

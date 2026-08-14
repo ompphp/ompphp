@@ -10,12 +10,12 @@ final class Dialog
 {
     public static function hide(int $player): bool
     {
-        return (bool) \Omp\Internal\dialog_hide($player);
+        return \Omp\Internal\dialog_hide($player);
     }
 
     public static function show(int $player, int $dialog, int $style, string $title, string $body, string $button1, string $button2): bool
     {
-        return (bool) \Omp\Internal\dialog_show($player, $dialog, $style, $title, $body, $button1, $button2);
+        return \Omp\Internal\dialog_show($player, $dialog, $style, $title, $body, $button1, $button2);
     }
 
 }

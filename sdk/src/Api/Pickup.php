@@ -10,93 +10,93 @@ final class Pickup
 {
     public static function addStatic(int $model, int $type, float $x, float $y, float $z, int $virtualWorld): bool
     {
-        return (bool) \Omp\Internal\pickup_add_static($model, $type, $x, $y, $z, $virtualWorld);
+        return \Omp\Internal\pickup_add_static($model, $type, $x, $y, $z, $virtualWorld);
     }
 
     public static function create(int $model, int $type, float $x, float $y, float $z, int $virtualWorld): int
     {
-        return (int) \Omp\Internal\pickup_create($model, $type, $x, $y, $z, $virtualWorld);
+        return \Omp\Internal\pickup_create($model, $type, $x, $y, $z, $virtualWorld);
     }
 
     public static function destroy(int $pickup): bool
     {
-        return (bool) \Omp\Internal\pickup_destroy($pickup);
+        return \Omp\Internal\pickup_destroy($pickup);
     }
 
     public static function fromId(int $pickupid): int
     {
-        return (int) \Omp\Internal\pickup_from_id($pickupid);
+        return \Omp\Internal\pickup_from_id($pickupid);
     }
 
     public static function getId(int $pickup): int
     {
-        return (int) \Omp\Internal\pickup_get_id($pickup);
+        return \Omp\Internal\pickup_get_id($pickup);
     }
 
     public static function getModel(int $pickup): int
     {
-        return (int) \Omp\Internal\pickup_get_model($pickup);
+        return \Omp\Internal\pickup_get_model($pickup);
     }
 
     /** @return array{float, float, float} */
     public static function getPos(int $pickup): array
     {
-        return (array) \Omp\Internal\pickup_get_pos($pickup);
+        return \Omp\Internal\pickup_get_pos($pickup);
     }
 
     public static function getType(int $pickup): int
     {
-        return (int) \Omp\Internal\pickup_get_type($pickup);
+        return \Omp\Internal\pickup_get_type($pickup);
     }
 
     public static function getVirtualWorld(int $pickup): int
     {
-        return (int) \Omp\Internal\pickup_get_virtual_world($pickup);
+        return \Omp\Internal\pickup_get_virtual_world($pickup);
     }
 
     public static function hideForPlayer(int $player, int $pickup): bool
     {
-        return (bool) \Omp\Internal\pickup_hide_for_player($player, $pickup);
+        return \Omp\Internal\pickup_hide_for_player($player, $pickup);
     }
 
     public static function isHiddenForPlayer(int $player, int $pickup): bool
     {
-        return (bool) \Omp\Internal\pickup_is_hidden_for_player($player, $pickup);
+        return \Omp\Internal\pickup_is_hidden_for_player($player, $pickup);
     }
 
     public static function isStreamedIn(int $player, int $pickup): bool
     {
-        return (bool) \Omp\Internal\pickup_is_streamed_in($player, $pickup);
+        return \Omp\Internal\pickup_is_streamed_in($player, $pickup);
     }
 
     public static function isValid(int $pickup): bool
     {
-        return (bool) \Omp\Internal\pickup_is_valid($pickup);
+        return \Omp\Internal\pickup_is_valid($pickup);
     }
 
     public static function setModel(int $pickup, int $model, bool $update): bool
     {
-        return (bool) \Omp\Internal\pickup_set_model($pickup, $model, $update);
+        return \Omp\Internal\pickup_set_model($pickup, $model, $update);
     }
 
     public static function setPos(int $pickup, float $x, float $y, float $z, bool $update): bool
     {
-        return (bool) \Omp\Internal\pickup_set_pos($pickup, $x, $y, $z, $update);
+        return \Omp\Internal\pickup_set_pos($pickup, $x, $y, $z, $update);
     }
 
     public static function setType(int $pickup, int $type, bool $update): bool
     {
-        return (bool) \Omp\Internal\pickup_set_type($pickup, $type, $update);
+        return \Omp\Internal\pickup_set_type($pickup, $type, $update);
     }
 
     public static function setVirtualWorld(int $pickup, int $virtualworld): bool
     {
-        return (bool) \Omp\Internal\pickup_set_virtual_world($pickup, $virtualworld);
+        return \Omp\Internal\pickup_set_virtual_world($pickup, $virtualworld);
     }
 
     public static function showForPlayer(int $player, int $pickup): bool
     {
-        return (bool) \Omp\Internal\pickup_show_for_player($player, $pickup);
+        return \Omp\Internal\pickup_show_for_player($player, $pickup);
     }
 
 }

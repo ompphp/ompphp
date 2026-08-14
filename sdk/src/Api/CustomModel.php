@@ -10,38 +10,38 @@ final class CustomModel
 {
     public static function addCharModel(int $baseid, int $newid, string $dff, string $textureLibrary): bool
     {
-        return (bool) \Omp\Internal\custom_model_add_char_model($baseid, $newid, $dff, $textureLibrary);
+        return \Omp\Internal\custom_model_add_char_model($baseid, $newid, $dff, $textureLibrary);
     }
 
     public static function addSimpleModel(int $virtualWorld, int $baseid, int $newid, string $dff, string $textureLibrary): bool
     {
-        return (bool) \Omp\Internal\custom_model_add_simple_model($virtualWorld, $baseid, $newid, $dff, $textureLibrary);
+        return \Omp\Internal\custom_model_add_simple_model($virtualWorld, $baseid, $newid, $dff, $textureLibrary);
     }
 
     public static function addSimpleModelTimed(int $virtualWorld, int $baseid, int $newid, string $dff, string $textureLibrary, int $timeOn, int $timeOff): bool
     {
-        return (bool) \Omp\Internal\custom_model_add_simple_model_timed($virtualWorld, $baseid, $newid, $dff, $textureLibrary, $timeOn, $timeOff);
+        return \Omp\Internal\custom_model_add_simple_model_timed($virtualWorld, $baseid, $newid, $dff, $textureLibrary, $timeOn, $timeOff);
     }
 
     public static function findModelFileNameFromCrc(int $crc): string
     {
-        return (string) \Omp\Internal\custom_model_find_model_file_name_from_crc($crc);
+        return \Omp\Internal\custom_model_find_model_file_name_from_crc($crc);
     }
 
     /** @return array{string, string} */
     public static function getPath(int $modelId): array
     {
-        return (array) \Omp\Internal\custom_model_get_path($modelId);
+        return \Omp\Internal\custom_model_get_path($modelId);
     }
 
     public static function isValid(int $modelId): bool
     {
-        return (bool) \Omp\Internal\custom_model_is_valid($modelId);
+        return \Omp\Internal\custom_model_is_valid($modelId);
     }
 
     public static function redirectDownload(int $player, string $url): bool
     {
-        return (bool) \Omp\Internal\custom_model_redirect_download($player, $url);
+        return \Omp\Internal\custom_model_redirect_download($player, $url);
     }
 
 }
