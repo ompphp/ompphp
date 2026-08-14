@@ -14,27 +14,27 @@ final readonly class Vehicle
 
     public function setHealth(float $health): bool
     {
-        return (bool) \Omp\Internal\vehicle_set_health($this->id, $health);
+        return \Omp\Internal\vehicle_set_health($this->id, $health);
     }
 
     public function health(): float
     {
-        return (float) \Omp\Internal\vehicle_get_health($this->id);
+        return \Omp\Internal\vehicle_get_health($this->id);
     }
 
     public function setVirtualWorld(int $world): bool
     {
-        return (bool) \Omp\Internal\vehicle_set_virtual_world($this->id, $world);
+        return \Omp\Internal\vehicle_set_virtual_world($this->id, $world);
     }
 
     public function virtualWorld(): int
     {
-        return (int) \Omp\Internal\vehicle_get_virtual_world($this->id);
+        return \Omp\Internal\vehicle_get_virtual_world($this->id);
     }
 
     public function setPosition(Vector3 $position): bool
     {
-        return (bool) \Omp\Internal\vehicle_set_pos($this->id, $position->x, $position->y, $position->z);
+        return \Omp\Internal\vehicle_set_pos($this->id, $position->x, $position->y, $position->z);
     }
 
     public function position(): Vector3
@@ -49,7 +49,7 @@ final readonly class Vehicle
 
     public function setVelocity(Vector3 $velocity): bool
     {
-        return (bool) \Omp\Internal\vehicle_set_velocity(
+        return \Omp\Internal\vehicle_set_velocity(
             $this->id,
             $velocity->x,
             $velocity->y,
@@ -69,7 +69,7 @@ final readonly class Vehicle
 
     public function updateDamageStatus(VehicleDamageStatus $status): bool
     {
-        return (bool) \Omp\Internal\vehicle_update_damage_status(
+        return \Omp\Internal\vehicle_update_damage_status(
             $this->id,
             $status->panels,
             $status->doors,
@@ -80,11 +80,11 @@ final readonly class Vehicle
 
     public function repair(): bool
     {
-        return (bool) \Omp\Internal\vehicle_repair($this->id);
+        return \Omp\Internal\vehicle_repair($this->id);
     }
 
     public function destroy(): bool
     {
-        return (bool) \Omp\Internal\vehicle_destroy($this->id);
+        return \Omp\Internal\vehicle_destroy($this->id);
     }
 }

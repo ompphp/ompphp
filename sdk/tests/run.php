@@ -14,6 +14,7 @@ final class NativeStub
     /** @var list<array{string, list<mixed>}> */
     public static array $calls = [];
     public static bool $invalidScore = false;
+    public static bool $invalidKeys = false;
 }
 
 /** @param list<mixed> $arguments */
@@ -31,6 +32,9 @@ function ompphp_native_call(string $name, mixed ...$arguments): mixed
     NativeStub::$calls[] = [$name, array_values($arguments)];
     if ($name === 'Player_GetScore' && NativeStub::$invalidScore) {
         return 'invalid';
+    }
+    if ($name === 'Player_GetKeys' && NativeStub::$invalidKeys) {
+        return [132, 'invalid', 1];
     }
     return match ($name) {
         'Player_GetHealth', 'Player_GetArmor' => 75.5,
@@ -119,6 +123,15 @@ expect($rotation->w === 1.0 && $rotation->x === 0.0 && $rotation->y === 0.0 && $
 $keyState = $player->keyState();
 expect($keyState->keys === 132 && $keyState->upDown === -1 && $keyState->leftRight === 1);
 expect($keyState->pressed(Keys::FIRE | Keys::AIM));
+NativeStub::$invalidKeys = true;
+try {
+    $player->keyState();
+    throw new RuntimeException('Invalid tuple element was accepted.');
+} catch (UnexpectedValueException $error) {
+    expect($error->getMessage() === 'Player_GetKeys returned invalid int output at index 1.');
+} finally {
+    NativeStub::$invalidKeys = false;
+}
 expect(NativeStub::$calls[0] === ['Player_SetHealth', [7, 90.0]]);
 expect(Runtime::apiVersion() === 1);
 expect(Runtime::version() === '0.1.0-test');
