@@ -51,7 +51,19 @@ expect(Server::dispatch('Unknown') === true);
 Server::on('Broken', static function (): void {
     throw new RuntimeException('expected test failure');
 });
+$afterFailure = 0;
+Server::on('Broken', static function () use (&$afterFailure): void {
+    $afterFailure++;
+});
 expect(Server::dispatch('Broken') === true);
+expect($afterFailure === 1);
+
+$failure = new RuntimeException('diagnostic test');
+$diagnostic = \Omp\Internal\format_handler_failure('Broken', $failure);
+expect(str_contains($diagnostic, 'PHP handler for Broken failed:'));
+expect(str_contains($diagnostic, 'RuntimeException: diagnostic test'));
+expect(str_contains($diagnostic, __FILE__ . ':'));
+expect(str_contains($diagnostic, 'Stack trace:'));
 
 $player = new Player(7);
 expect($player->setHealth(90.0));

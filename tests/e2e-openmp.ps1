@@ -41,7 +41,15 @@ try {
     }
 
     $log = ((Get-Content -Raw $stdout), (Get-Content -Raw $stderr)) -join "`n"
-    foreach ($marker in @('Successfully loaded component ompphp', 'OMPPHP_E2E_READY', 'OMPPHP_E2E_SDK', 'OMPPHP_E2E_TICK')) {
+    foreach ($marker in @(
+        'Successfully loaded component ompphp',
+        'OMPPHP_E2E_READY',
+        'OMPPHP_E2E_SDK',
+        'PHP handler for Tick failed:',
+        'RuntimeException: OMPPHP_E2E_EXPECTED_FAILURE',
+        'Stack trace:',
+        'OMPPHP_E2E_TICK'
+    )) {
         if (!$log.Contains($marker)) {
             Write-Host $log
             throw "Missing server marker: $marker"

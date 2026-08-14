@@ -66,6 +66,11 @@ function register_handler(string $event, callable $handler): void
     $GLOBALS['__ompphp_handlers'][$event][] = $handler;
 }
 
+function format_handler_failure(string $event, \Throwable $error): string
+{
+    return sprintf("PHP handler for %s failed:\n%s", $event, (string) $error);
+}
+
 if (!function_exists(__NAMESPACE__ . '\\dispatch')) {
     /** @param list<mixed> $arguments */
     function dispatch(string $event, array $arguments = []): ?bool
@@ -78,7 +83,7 @@ if (!function_exists(__NAMESPACE__ . '\\dispatch')) {
             try {
                 $value = $handler(...$arguments);
             } catch (\Throwable $error) {
-                error_log(sprintf('PHP handler for %s failed: %s', $event, $error->getMessage()));
+                error_log(format_handler_failure($event, $error));
                 continue;
             }
             if (is_bool($value)) {

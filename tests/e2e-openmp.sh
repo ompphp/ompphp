@@ -50,4 +50,7 @@ fi
 grep -F "Successfully loaded component ompphp" "${test_dir}/server.log"
 grep -F "OMPPHP_E2E_READY" "${test_dir}/server.log"
 grep -F "OMPPHP_E2E_SDK" "${test_dir}/server.log"
+grep -F "PHP handler for Tick failed:" "${test_dir}/server.log"
+grep -F "RuntimeException: OMPPHP_E2E_EXPECTED_FAILURE" "${test_dir}/server.log"
+grep -F "Stack trace:" "${test_dir}/server.log"
 grep -F "OMPPHP_E2E_TICK" "${test_dir}/server.log"

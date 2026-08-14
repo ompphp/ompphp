@@ -22,6 +22,13 @@ Core::log('OMPPHP_E2E_READY');
 Core::log('OMPPHP_E2E_SDK');
 
 Handlers::tick(static function (): void {
+    if (empty($GLOBALS['ompphp_e2e_failure'])) {
+        $GLOBALS['ompphp_e2e_failure'] = true;
+        throw new RuntimeException('OMPPHP_E2E_EXPECTED_FAILURE');
+    }
+});
+
+Handlers::tick(static function (): void {
     if (empty($GLOBALS['ompphp_e2e_tick'])) {
         $GLOBALS['ompphp_e2e_tick'] = true;
         Core::log('OMPPHP_E2E_TICK');
