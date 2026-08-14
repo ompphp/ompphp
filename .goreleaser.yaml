@@ -1,0 +1,56 @@
+version: 2
+
+project_name: ompphp
+
+before:
+  hooks:
+    - go run ./tools/sdkpack -version {{ .Version }}
+
+builds:
+  - id: linux
+    main: ./cmd/component
+    binary: components/ompphp
+    buildmode: c-shared
+    flags: [-mod=vendor]
+    env:
+      - CGO_ENABLED=1
+    goos: [linux]
+    goarch: [amd64]
+    ldflags:
+      - -s -w -X github.com/ompphp/ompphp/internal/runtime.Version={{.Version}}
+
+  - id: windows
+    main: ./cmd/component
+    binary: components/ompphp
+    buildmode: c-shared
+    flags: [-mod=vendor]
+    env:
+      - CGO_ENABLED=1
+      - CC=x86_64-w64-mingw32-gcc
+    goos: [windows]
+    goarch: [amd64]
+    ldflags:
+      - -s -w -X github.com/ompphp/ompphp/internal/runtime.Version={{.Version}}
+
+archives:
+  - ids: [linux, windows]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: ompphp_{{.Version}}_{{.Os}}_x86_64
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+  extra_files:
+    - glob: build/ompphp-sdk_*.zip
+
+release:
+  extra_files:
+    - glob: build/ompphp-sdk_*.zip
+
+changelog:
+  use: git

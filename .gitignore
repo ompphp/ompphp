@@ -1,0 +1,9 @@
+/build/
+/dist/
+*.so
+*.dll
+*.dylib
+.phpunit.cache/
+/sdk/vendor/
+/examples/*/vendor/
+/examples/*/composer.lock

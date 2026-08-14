@@ -1,0 +1,1249 @@
+--- a/vendor/github.com/KarpelesLab/goro/ext/standard/fs.go
++++ b/vendor/github.com/KarpelesLab/goro/ext/standard/fs.go
+@@ -286,7 +286,7 @@
+ 	}
+ 
+ 	// Use syscall.Access with R_OK (0x4) to check real read permission
+-	if err := syscall.Access(p, 0x4); err != nil {
++	if err := platformAccess(p, 0x4); err != nil {
+ 		return phpv.ZFalse.ZVal(), nil
+ 	}
+ 	return phpv.ZTrue.ZVal(), nil
+@@ -318,7 +318,7 @@
+ 	}
+ 
+ 	// Use syscall.Access with W_OK (0x2) to check real write permission
+-	if err := syscall.Access(p, 0x2); err != nil {
++	if err := platformAccess(p, 0x2); err != nil {
+ 		return phpv.ZFalse.ZVal(), nil
+ 	}
+ 	return phpv.ZTrue.ZVal(), nil
+@@ -350,7 +350,7 @@
+ 	}
+ 
+ 	// Use syscall.Access with X_OK (0x1) to check real execute permission
+-	if err := syscall.Access(p, 0x1); err != nil {
++	if err := platformAccess(p, 0x1); err != nil {
+ 		return phpv.ZFalse.ZVal(), nil
+ 	}
+ 	return phpv.ZTrue.ZVal(), nil
+@@ -1542,9 +1542,7 @@
+ 
+ 	// Check if source and dest are the same file - PHP silently returns false
+ 	if dstErr == nil {
+-		srcSys, srcOk := srcStat.Sys().(*syscall.Stat_t)
+-		dstSys, dstOk := dstStat.Sys().(*syscall.Stat_t)
+-		if srcOk && dstOk && srcSys.Dev == dstSys.Dev && srcSys.Ino == dstSys.Ino {
++		if os.SameFile(srcStat, dstStat) {
+ 			return phpv.ZFalse.ZVal(), nil
+ 		}
+ 	}
+@@ -1640,11 +1638,11 @@
+ 	}
+ 
+ 	// PHP's linkinfo() returns st_dev (device number), not file mode
+-	st, ok := fi.Sys().(*syscall.Stat_t)
++	device, ok := platformDevice(fi)
+ 	if !ok {
+ 		return phpv.ZInt(-1).ZVal(), nil
+ 	}
+-	return phpv.ZInt(int64(st.Dev)).ZVal(), nil
++	return phpv.ZInt(device).ZVal(), nil
+ }
+ 
+ // > func bool is_uploaded_file ( string $filename )
+@@ -1692,12 +1690,12 @@
+ 
+ 	if maskArg == nil {
+ 		// Query current umask: set to 0, read old value, restore
+-		old := syscall.Umask(0)
+-		syscall.Umask(old)
++		old := platformUmask(0)
++		platformUmask(old)
+ 		return phpv.ZInt(old).ZVal(), nil
+ 	}
+ 
+-	old := syscall.Umask(int(*maskArg))
++	old := platformUmask(int(*maskArg))
+ 	return phpv.ZInt(old).ZVal(), nil
+ }
+ 
+@@ -1896,4 +1894,3 @@
+ 	}
+ 	return phpv.ZInt(0).ZVal(), nil
+ }
+-
+--- a/vendor/github.com/KarpelesLab/goro/ext/standard/fs_stat.go
++++ b/vendor/github.com/KarpelesLab/goro/ext/standard/fs_stat.go
+@@ -163,8 +163,7 @@
+ 		return phpv.ZFalse.ZVal(), ctx.Warn("stat failed for %s", filename)
+ 	}
+ 
+-	st := fi.Sys().(*syscall.Stat_t)
+-	return phpv.ZInt(st.Atim.Sec).ZVal(), nil
++	return phpv.ZInt(platformFileStat(fi).atime).ZVal(), nil
+ }
+ 
+ // > func int filectime ( string $filename )
+@@ -189,8 +188,7 @@
+ 		return phpv.ZFalse.ZVal(), ctx.Warn("stat failed for %s", filename)
+ 	}
+ 
+-	st := fi.Sys().(*syscall.Stat_t)
+-	return phpv.ZInt(st.Ctim.Sec).ZVal(), nil
++	return phpv.ZInt(platformFileStat(fi).ctime).ZVal(), nil
+ }
+ 
+ // > func int filemtime ( string $filename )
+@@ -308,8 +306,7 @@
+ 		return phpv.ZFalse.ZVal(), ctx.Warn("stat failed for %s", filename)
+ 	}
+ 
+-	st := fi.Sys().(*syscall.Stat_t)
+-	return phpv.ZInt(st.Mode).ZVal(), nil
++	return phpv.ZInt(platformFileStat(fi).mode).ZVal(), nil
+ }
+ 
+ // > func int fileowner ( string $filename )
+@@ -334,8 +331,7 @@
+ 		return phpv.ZFalse.ZVal(), ctx.Warn("stat failed for %s", filename)
+ 	}
+ 
+-	st := fi.Sys().(*syscall.Stat_t)
+-	return phpv.ZInt(st.Uid).ZVal(), nil
++	return phpv.ZInt(platformFileStat(fi).uid).ZVal(), nil
+ }
+ 
+ // > func int filegroup ( string $filename )
+@@ -360,8 +356,7 @@
+ 		return phpv.ZFalse.ZVal(), ctx.Warn("stat failed for %s", filename)
+ 	}
+ 
+-	st := fi.Sys().(*syscall.Stat_t)
+-	return phpv.ZInt(st.Gid).ZVal(), nil
++	return phpv.ZInt(platformFileStat(fi).gid).ZVal(), nil
+ }
+ 
+ // > func int fileinode ( string $filename )
+@@ -386,8 +381,7 @@
+ 		return phpv.ZFalse.ZVal(), ctx.Warn("stat failed for %s", filename)
+ 	}
+ 
+-	st := fi.Sys().(*syscall.Stat_t)
+-	return phpv.ZInt(int64(st.Ino)).ZVal(), nil
++	return phpv.ZInt(platformFileStat(fi).ino).ZVal(), nil
+ }
+ 
+ // > func bool touch ( string $filename [, int $time = time() [, int $atime ]] )
+@@ -638,8 +632,7 @@
+ 	}
+ 
+ 	p := resolveFilePath(ctx, dir)
+-	var stat syscall.Statfs_t
+-	err = syscall.Statfs(p, &stat)
++	free, _, err := platformDiskSpace(p)
+ 	if err != nil {
+ 		if os.IsNotExist(err) {
+ 			return phpv.ZFalse.ZVal(), ctx.Warn("No such file or directory")
+@@ -647,7 +640,7 @@
+ 		return phpv.ZFalse.ZVal(), ctx.Warn("%s", err)
+ 	}
+ 
+-	return phpv.ZFloat(float64(stat.Bavail) * float64(stat.Bsize)).ZVal(), nil
++	return phpv.ZFloat(free).ZVal(), nil
+ }
+ 
+ // > func float disk_total_space ( string $directory )
+@@ -663,8 +656,7 @@
+ 	}
+ 
+ 	p := resolveFilePath(ctx, dir)
+-	var stat syscall.Statfs_t
+-	err = syscall.Statfs(p, &stat)
++	_, total, err := platformDiskSpace(p)
+ 	if err != nil {
+ 		if os.IsNotExist(err) {
+ 			return phpv.ZFalse.ZVal(), ctx.Warn("No such file or directory")
+@@ -672,40 +664,18 @@
+ 		return phpv.ZFalse.ZVal(), ctx.Warn("%s", err)
+ 	}
+ 
+-	return phpv.ZFloat(float64(stat.Blocks) * float64(stat.Bsize)).ZVal(), nil
++	return phpv.ZFloat(total).ZVal(), nil
+ }
+ 
+ // buildStatArray creates a PHP stat() result array from os.FileInfo.
+ func buildStatArray(ctx phpv.Context, fi os.FileInfo) *phpv.ZVal {
+ 	result := phpv.NewZArray()
+ 
+-	// Try to get the underlying syscall.Stat_t for full data
+-	var dev, ino, mode, nlink, uid, gid, rdev, size, atime, mtime, ctime, blksize, blocks int64
+-
+-	if st, ok := fi.Sys().(*syscall.Stat_t); ok && st != nil {
+-		dev = int64(st.Dev)
+-		ino = int64(st.Ino)
+-		mode = int64(st.Mode)
+-		nlink = int64(st.Nlink)
+-		uid = int64(st.Uid)
+-		gid = int64(st.Gid)
+-		rdev = int64(st.Rdev)
+-		size = st.Size
+-		atime = st.Atim.Sec
+-		mtime = st.Mtim.Sec
+-		ctime = st.Ctim.Sec
+-		blksize = int64(st.Blksize)
+-		blocks = st.Blocks
+-	} else {
+-		// Fallback for user stream wrappers that don't have full stat data
+-		size = fi.Size()
+-		mtime = fi.ModTime().Unix()
+-		atime = mtime
+-		ctime = mtime
+-		mode = int64(fi.Mode())
+-		blksize = 4096
+-		blocks = (size + 511) / 512
+-	}
++	stat := platformFileStat(fi)
++	dev, ino, mode, nlink := stat.dev, stat.ino, stat.mode, stat.nlink
++	uid, gid, rdev, size := stat.uid, stat.gid, stat.rdev, stat.size
++	atime, mtime, ctime := stat.atime, stat.mtime, stat.ctime
++	blksize, blocks := stat.blksize, stat.blocks
+ 
+ 	// Numeric indices 0-12
+ 	result.OffsetSet(ctx, phpv.ZInt(0).ZVal(), phpv.ZInt(dev).ZVal())      // dev
+--- a/vendor/github.com/KarpelesLab/goro/ext/standard/missing_funcs2.go
++++ b/vendor/github.com/KarpelesLab/goro/ext/standard/missing_funcs2.go
+@@ -6,7 +6,6 @@
+ 	"os"
+ 	"runtime"
+ 	"strings"
+-	"syscall"
+ 
+ 	"github.com/KarpelesLab/goro/core"
+ 	"github.com/KarpelesLab/goro/core/phpctx"
+@@ -149,35 +148,30 @@
+ 		return nil, err
+ 	}
+ 
+-	who := syscall.RUSAGE_SELF
+-	if mode != nil && *mode == 1 {
+-		who = syscall.RUSAGE_CHILDREN
+-	}
+-
+-	var rusage syscall.Rusage
+-	if err := syscall.Getrusage(who, &rusage); err != nil {
++	rusage, err := platformResourceUsage(mode != nil && *mode == 1)
++	if err != nil {
+ 		return phpv.ZFalse.ZVal(), nil
+ 	}
+ 
+ 	result := phpv.NewZArray()
+-	result.OffsetSet(ctx, phpv.ZString("ru_utime.tv_sec").ZVal(), phpv.ZInt(rusage.Utime.Sec).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_utime.tv_usec").ZVal(), phpv.ZInt(rusage.Utime.Usec).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_stime.tv_sec").ZVal(), phpv.ZInt(rusage.Stime.Sec).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_stime.tv_usec").ZVal(), phpv.ZInt(rusage.Stime.Usec).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_maxrss").ZVal(), phpv.ZInt(rusage.Maxrss).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_ixrss").ZVal(), phpv.ZInt(rusage.Ixrss).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_idrss").ZVal(), phpv.ZInt(rusage.Idrss).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_isrss").ZVal(), phpv.ZInt(rusage.Isrss).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_minflt").ZVal(), phpv.ZInt(rusage.Minflt).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_majflt").ZVal(), phpv.ZInt(rusage.Majflt).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_nswap").ZVal(), phpv.ZInt(rusage.Nswap).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_inblock").ZVal(), phpv.ZInt(rusage.Inblock).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_oublock").ZVal(), phpv.ZInt(rusage.Oublock).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_msgsnd").ZVal(), phpv.ZInt(rusage.Msgsnd).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_msgrcv").ZVal(), phpv.ZInt(rusage.Msgrcv).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_nsignals").ZVal(), phpv.ZInt(rusage.Nsignals).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_nvcsw").ZVal(), phpv.ZInt(rusage.Nvcsw).ZVal())
+-	result.OffsetSet(ctx, phpv.ZString("ru_nivcsw").ZVal(), phpv.ZInt(rusage.Nivcsw).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_utime.tv_sec").ZVal(), phpv.ZInt(rusage.userSec).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_utime.tv_usec").ZVal(), phpv.ZInt(rusage.userUsec).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_stime.tv_sec").ZVal(), phpv.ZInt(rusage.systemSec).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_stime.tv_usec").ZVal(), phpv.ZInt(rusage.systemUsec).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_maxrss").ZVal(), phpv.ZInt(rusage.maxRSS).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_ixrss").ZVal(), phpv.ZInt(rusage.ixRSS).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_idrss").ZVal(), phpv.ZInt(rusage.idRSS).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_isrss").ZVal(), phpv.ZInt(rusage.isRSS).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_minflt").ZVal(), phpv.ZInt(rusage.minorFaults).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_majflt").ZVal(), phpv.ZInt(rusage.majorFaults).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_nswap").ZVal(), phpv.ZInt(rusage.swaps).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_inblock").ZVal(), phpv.ZInt(rusage.inputBlocks).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_oublock").ZVal(), phpv.ZInt(rusage.outputBlocks).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_msgsnd").ZVal(), phpv.ZInt(rusage.messagesSent).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_msgrcv").ZVal(), phpv.ZInt(rusage.messagesReceived).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_nsignals").ZVal(), phpv.ZInt(rusage.signals).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_nvcsw").ZVal(), phpv.ZInt(rusage.voluntarySwitches).ZVal())
++	result.OffsetSet(ctx, phpv.ZString("ru_nivcsw").ZVal(), phpv.ZInt(rusage.involuntarySwitches).ZVal())
+ 	return result.ZVal(), nil
+ }
+ 
+@@ -362,19 +356,7 @@
+ 
+ 	// proc_nice adjusts by an increment (like nice(2)), not absolute value.
+ 	// Get current priority, add increment, and set the result.
+-	currentPrio, err2 := syscall.Getpriority(syscall.PRIO_PROCESS, 0)
+-	if err2 != nil {
+-		return phpv.ZFalse.ZVal(), ctx.Warn("proc_nice(): Permission denied")
+-	}
+-	newPrio := currentPrio + int(increment)
+-	if newPrio > 19 {
+-		newPrio = 19
+-	}
+-	if newPrio < -20 {
+-		newPrio = -20
+-	}
+-	err2 = syscall.Setpriority(syscall.PRIO_PROCESS, 0, newPrio)
+-	if err2 != nil {
++	if err := platformNice(int(increment)); err != nil {
+ 		return phpv.ZFalse.ZVal(), ctx.Warn("proc_nice(): Permission denied")
+ 	}
+ 	return phpv.ZTrue.ZVal(), nil
+@@ -424,4 +406,3 @@
+ func fncGetmygid(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+ 	return phpv.ZInt(os.Getgid()).ZVal(), nil
+ }
+-
+--- a/vendor/github.com/KarpelesLab/goro/ext/standard/network.go
++++ b/vendor/github.com/KarpelesLab/goro/ext/standard/network.go
+@@ -2,7 +2,6 @@
+ 
+ import (
+ 	"fmt"
+-	"log/syslog"
+ 	"net"
+ 	"strconv"
+ 	"strings"
+@@ -18,16 +17,24 @@
+ func fncGethostbyname(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+ 	var hostname phpv.ZString
+ 	_, err := core.Expand(ctx, args, &hostname)
+-	if err != nil { return nil, err }
++	if err != nil {
++		return nil, err
++	}
+ 	host := string(hostname)
+ 	if strings.ContainsRune(host, 0) {
+ 		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "gethostbyname(): Argument #1 ($hostname) must not contain any null bytes")
+ 	}
+-	if host == "" { return phpv.ZString("").ZVal(), nil }
++	if host == "" {
++		return phpv.ZString("").ZVal(), nil
++	}
+ 	addrs, e := net.LookupHost(host)
+-	if e != nil || len(addrs) == 0 { return hostname.ZVal(), nil }
++	if e != nil || len(addrs) == 0 {
++		return hostname.ZVal(), nil
++	}
+ 	for _, a := range addrs {
+-		if ip := net.ParseIP(a); ip != nil && ip.To4() != nil { return phpv.ZString(a).ZVal(), nil }
++		if ip := net.ParseIP(a); ip != nil && ip.To4() != nil {
++			return phpv.ZString(a).ZVal(), nil
++		}
+ 	}
+ 	return phpv.ZString(addrs[0]).ZVal(), nil
+ }
+@@ -35,67 +42,81 @@
+ func fncGethostbyaddr(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+ 	var ipStr phpv.ZString
+ 	_, err := core.Expand(ctx, args, &ipStr)
+-	if err != nil { return nil, err }
+-	if ipStr == "" { return phpv.ZFalse.ZVal(), ctx.Warn("gethostbyaddr(): Address is not a valid IPv4 or IPv6 address") }
++	if err != nil {
++		return nil, err
++	}
++	if ipStr == "" {
++		return phpv.ZFalse.ZVal(), ctx.Warn("gethostbyaddr(): Address is not a valid IPv4 or IPv6 address")
++	}
+ 	names, e := net.LookupAddr(string(ipStr))
+-	if e != nil || len(names) == 0 { return phpv.ZFalse.ZVal(), ctx.Warn("gethostbyaddr(): Host not found") }
++	if e != nil || len(names) == 0 {
++		return phpv.ZFalse.ZVal(), ctx.Warn("gethostbyaddr(): Host not found")
++	}
+ 	return phpv.ZString(strings.TrimSuffix(names[0], ".")).ZVal(), nil
+ }
+ 
+ func fncGethostbynamel(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+ 	var hostname phpv.ZString
+ 	_, err := core.Expand(ctx, args, &hostname)
+-	if err != nil { return nil, err }
++	if err != nil {
++		return nil, err
++	}
+ 	addrs, e := net.LookupHost(string(hostname))
+-	if e != nil { return phpv.ZFalse.ZVal(), nil }
++	if e != nil {
++		return phpv.ZFalse.ZVal(), nil
++	}
+ 	result := phpv.NewZArray()
+ 	for _, a := range addrs {
+-		if ip := net.ParseIP(a); ip != nil && ip.To4() != nil { result.OffsetSet(ctx, nil, phpv.ZString(a).ZVal()) }
++		if ip := net.ParseIP(a); ip != nil && ip.To4() != nil {
++			result.OffsetSet(ctx, nil, phpv.ZString(a).ZVal())
++		}
+ 	}
+ 	return result.ZVal(), nil
+ }
+ 
+-func fncOpenlog(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) { return phpv.ZTrue.ZVal(), nil }
+-func fncCloselog(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) { return phpv.ZTrue.ZVal(), nil }
++func fncOpenlog(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
++	return phpv.ZTrue.ZVal(), nil
++}
++func fncCloselog(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
++	return phpv.ZTrue.ZVal(), nil
++}
+ 
+ func fncSyslog(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+ 	var priority phpv.ZInt
+ 	var message phpv.ZString
+ 	_, err := core.Expand(ctx, args, &priority, &message)
+-	if err != nil { return nil, err }
+-	var p syslog.Priority
+-	switch int(priority) {
+-	case 0: p = syslog.LOG_EMERG
+-	case 1: p = syslog.LOG_ALERT
+-	case 2: p = syslog.LOG_CRIT
+-	case 3: p = syslog.LOG_ERR
+-	case 4: p = syslog.LOG_WARNING
+-	case 5: p = syslog.LOG_NOTICE
+-	case 6: p = syslog.LOG_INFO
+-	default: p = syslog.LOG_DEBUG
+-	}
+-	w, e := syslog.New(p, "")
+-	if e != nil { return phpv.ZFalse.ZVal(), nil }
+-	defer w.Close()
+-	fmt.Fprint(w, string(message))
++	if err != nil {
++		return nil, err
++	}
++	if err := platformSyslog(int(priority), string(message)); err != nil {
++		return phpv.ZFalse.ZVal(), nil
++	}
+ 	return phpv.ZTrue.ZVal(), nil
+ }
+ 
+ func fncGetprotobyname(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+ 	var name phpv.ZString
+ 	_, err := core.Expand(ctx, args, &name)
+-	if err != nil { return nil, err }
+-	m := map[string]int{"ip":0,"icmp":1,"igmp":2,"ggp":3,"tcp":6,"egp":8,"pup":12,"udp":17,"hmp":20,"xns-idp":22,"rdp":27}
+-	if v, ok := m[strings.ToLower(string(name))]; ok { return phpv.ZInt(v).ZVal(), nil }
++	if err != nil {
++		return nil, err
++	}
++	m := map[string]int{"ip": 0, "icmp": 1, "igmp": 2, "ggp": 3, "tcp": 6, "egp": 8, "pup": 12, "udp": 17, "hmp": 20, "xns-idp": 22, "rdp": 27}
++	if v, ok := m[strings.ToLower(string(name))]; ok {
++		return phpv.ZInt(v).ZVal(), nil
++	}
+ 	return phpv.ZFalse.ZVal(), nil
+ }
+ 
+ func fncGetprotobynumber(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+ 	var number phpv.ZInt
+ 	_, err := core.Expand(ctx, args, &number)
+-	if err != nil { return nil, err }
+-	m := map[int]string{0:"ip",1:"icmp",2:"igmp",3:"ggp",6:"tcp",8:"egp",12:"pup",17:"udp",20:"hmp",22:"xns-idp",27:"rdp"}
+-	if v, ok := m[int(number)]; ok { return phpv.ZString(v).ZVal(), nil }
++	if err != nil {
++		return nil, err
++	}
++	m := map[int]string{0: "ip", 1: "icmp", 2: "igmp", 3: "ggp", 6: "tcp", 8: "egp", 12: "pup", 17: "udp", 20: "hmp", 22: "xns-idp", 27: "rdp"}
++	if v, ok := m[int(number)]; ok {
++		return phpv.ZString(v).ZVal(), nil
++	}
+ 	return phpv.ZFalse.ZVal(), nil
+ }
+ 
+@@ -103,16 +124,24 @@
+ 	var host phpv.ZString
+ 	var dnsType core.Optional[phpv.ZString]
+ 	_, err := core.Expand(ctx, args, &host, &dnsType)
+-	if err != nil { return nil, err }
+-	if host == "" { return phpv.ZFalse.ZVal(), ctx.Warn("checkdnsrr(): Argument #1 ($hostname) must not be empty") }
++	if err != nil {
++		return nil, err
++	}
++	if host == "" {
++		return phpv.ZFalse.ZVal(), ctx.Warn("checkdnsrr(): Argument #1 ($hostname) must not be empty")
++	}
+ 	return phpv.ZFalse.ZVal(), nil
+ }
+ 
+ func fncDnsGetRecord(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+ 	var hostname phpv.ZString
+ 	_, err := core.Expand(ctx, args, &hostname)
+-	if err != nil { return nil, err }
+-	if hostname == "" { return phpv.ZFalse.ZVal(), ctx.Warn("dns_get_record(): Argument #1 ($hostname) must not be empty") }
++	if err != nil {
++		return nil, err
++	}
++	if hostname == "" {
++		return phpv.ZFalse.ZVal(), ctx.Warn("dns_get_record(): Argument #1 ($hostname) must not be empty")
++	}
+ 	return phpv.NewZArray().ZVal(), nil
+ }
+ 
+@@ -172,15 +201,24 @@
+ 	var hostname phpv.ZString
+ 	var port core.Optional[phpv.ZInt]
+ 	_, err := core.Expand(ctx, args, &hostname, &port)
+-	if err != nil { return nil, err }
++	if err != nil {
++		return nil, err
++	}
+ 	host := string(hostname)
+ 	if strings.ContainsRune(host, 0) {
+ 		return phpv.ZFalse.ZVal(), ctx.Warn("fsockopen(): Argument #1 ($hostname) must not contain any null bytes")
+ 	}
+ 	proto := "tcp"
+-	if strings.HasPrefix(host, "tcp://") { host = host[6:] } else if strings.HasPrefix(host, "udp://") { proto = "udp"; host = host[6:] }
++	if strings.HasPrefix(host, "tcp://") {
++		host = host[6:]
++	} else if strings.HasPrefix(host, "udp://") {
++		proto = "udp"
++		host = host[6:]
++	}
+ 	p := 0
+-	if port.HasArg() { p = int(port.Get()) }
++	if port.HasArg() {
++		p = int(port.Get())
++	}
+ 	addr := net.JoinHostPort(host, strconv.Itoa(p))
+ 	conn, de := net.DialTimeout(proto, addr, 60*time.Second)
+ 	if de != nil {
+@@ -193,30 +231,60 @@
+ }
+ 
+ func fncSetcookie(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+-	if len(args) == 0 { return nil, phpobj.ThrowError(ctx, phpobj.ArgumentCountError, "setcookie() expects at least 1 argument, 0 given") }
++	if len(args) == 0 {
++		return nil, phpobj.ThrowError(ctx, phpobj.ArgumentCountError, "setcookie() expects at least 1 argument, 0 given")
++	}
+ 	name := args[0].String()
+ 	value, path, domain, samesite := "", "", "", ""
+ 	expires := 0
+ 	secure, httponly, partitioned := false, false, false
+-	if len(args) >= 2 { value = args[1].String() }
++	if len(args) >= 2 {
++		value = args[1].String()
++	}
+ 	if len(args) >= 3 && args[2].GetType() == phpv.ZtArray {
+ 		opts := args[2].AsArray(ctx)
+-		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("expires")); e == nil && v != nil { expires = int(v.AsInt(ctx)) }
+-		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("path")); e == nil && v != nil { path = v.String() }
+-		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("domain")); e == nil && v != nil { domain = v.String() }
+-		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("secure")); e == nil && v != nil { secure = bool(v.AsBool(ctx)) }
+-		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("httponly")); e == nil && v != nil { httponly = bool(v.AsBool(ctx)) }
+-		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("samesite")); e == nil && v != nil { samesite = v.String() }
+-		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("partitioned")); e == nil && v != nil { partitioned = bool(v.AsBool(ctx)) }
++		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("expires")); e == nil && v != nil {
++			expires = int(v.AsInt(ctx))
++		}
++		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("path")); e == nil && v != nil {
++			path = v.String()
++		}
++		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("domain")); e == nil && v != nil {
++			domain = v.String()
++		}
++		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("secure")); e == nil && v != nil {
++			secure = bool(v.AsBool(ctx))
++		}
++		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("httponly")); e == nil && v != nil {
++			httponly = bool(v.AsBool(ctx))
++		}
++		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("samesite")); e == nil && v != nil {
++			samesite = v.String()
++		}
++		if v, _, e := opts.OffsetCheck(ctx, phpv.ZStr("partitioned")); e == nil && v != nil {
++			partitioned = bool(v.AsBool(ctx))
++		}
+ 	} else {
+-		if len(args) >= 3 { expires = int(args[2].AsInt(ctx)) }
+-		if len(args) >= 4 { path = args[3].String() }
+-		if len(args) >= 5 { domain = args[4].String() }
+-		if len(args) >= 6 { secure = bool(args[5].AsBool(ctx)) }
+-		if len(args) >= 7 { httponly = bool(args[6].AsBool(ctx)) }
++		if len(args) >= 3 {
++			expires = int(args[2].AsInt(ctx))
++		}
++		if len(args) >= 4 {
++			path = args[3].String()
++		}
++		if len(args) >= 5 {
++			domain = args[4].String()
++		}
++		if len(args) >= 6 {
++			secure = bool(args[5].AsBool(ctx))
++		}
++		if len(args) >= 7 {
++			httponly = bool(args[6].AsBool(ctx))
++		}
+ 	}
+ 	h := ctx.HeaderContext()
+-	if h == nil { return phpv.ZFalse.ZVal(), nil }
++	if h == nil {
++		return phpv.ZFalse.ZVal(), nil
++	}
+ 	var c strings.Builder
+ 	if value == "" && expires == 0 {
+ 		c.WriteString(name + "=deleted; expires=Thu, 01 Jan 1970 00:00:01 GMT; Max-Age=0")
+@@ -224,18 +292,32 @@
+ 		c.WriteString(name + "=" + phpCookieEncode(value))
+ 		if expires != 0 {
+ 			ma := int64(expires) - time.Now().Unix()
+-			if ma < 0 { ma = 0 }
++			if ma < 0 {
++				ma = 0
++			}
+ 			t := time.Unix(int64(expires), 0).UTC()
+ 			c.WriteString("; expires=" + t.Format("Mon, 02 Jan 2006 15:04:05") + " GMT")
+ 			c.WriteString(fmt.Sprintf("; Max-Age=%d", ma))
+ 		}
+ 	}
+-	if path != "" { c.WriteString("; path=" + path) }
+-	if domain != "" { c.WriteString("; domain=" + domain) }
+-	if secure { c.WriteString("; secure") }
+-	if httponly { c.WriteString("; HttpOnly") }
+-	if samesite != "" { c.WriteString("; SameSite=" + samesite) }
+-	if partitioned { c.WriteString("; Partitioned") }
++	if path != "" {
++		c.WriteString("; path=" + path)
++	}
++	if domain != "" {
++		c.WriteString("; domain=" + domain)
++	}
++	if secure {
++		c.WriteString("; secure")
++	}
++	if httponly {
++		c.WriteString("; HttpOnly")
++	}
++	if samesite != "" {
++		c.WriteString("; SameSite=" + samesite)
++	}
++	if partitioned {
++		c.WriteString("; Partitioned")
++	}
+ 	h.Add("Set-Cookie", c.String(), false)
+ 	return phpv.ZTrue.ZVal(), nil
+ }
+@@ -246,16 +328,22 @@
+ 		ch := s[i]
+ 		if (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '.' || ch == '_' || ch == '~' {
+ 			b.WriteByte(ch)
+-		} else { fmt.Fprintf(&b, "%%%02X", ch) }
++		} else {
++			fmt.Fprintf(&b, "%%%02X", ch)
++		}
+ 	}
+ 	return b.String()
+ }
+ 
+-func fncSetrawcookie(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) { return fncSetcookie(ctx, args) }
++func fncSetrawcookie(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
++	return fncSetcookie(ctx, args)
++}
+ 
+ func fncStreamGetTransports(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+ 	r := phpv.NewZArray()
+-	for _, t := range []string{"tcp","udp","unix","udg"} { r.OffsetSet(ctx, nil, phpv.ZString(t).ZVal()) }
++	for _, t := range []string{"tcp", "udp", "unix", "udg"} {
++		r.OffsetSet(ctx, nil, phpv.ZString(t).ZVal())
++	}
+ 	return r.ZVal(), nil
+ }
+ 
+@@ -274,14 +362,29 @@
+ 	return r.ZVal(), nil
+ }
+ 
+-func fncStreamSetBlocking(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) { return phpv.ZTrue.ZVal(), nil }
+-func fncStreamSetTimeout(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) { return phpv.ZTrue.ZVal(), nil }
+-func fncStreamSetWriteBuffer(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) { return phpv.ZInt(0).ZVal(), nil }
+-func fncStreamSetReadBuffer(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) { return phpv.ZInt(0).ZVal(), nil }
+-func fncStreamSetChunkSize(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) { return phpv.ZInt(8192).ZVal(), nil }
++func fncStreamSetBlocking(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
++	return phpv.ZTrue.ZVal(), nil
++}
++func fncStreamSetTimeout(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
++	return phpv.ZTrue.ZVal(), nil
++}
++func fncStreamSetWriteBuffer(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
++	return phpv.ZInt(0).ZVal(), nil
++}
++func fncStreamSetReadBuffer(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
++	return phpv.ZInt(0).ZVal(), nil
++}
++func fncStreamSetChunkSize(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
++	return phpv.ZInt(8192).ZVal(), nil
++}
+ func fncStreamSelect(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+-	if len(args) < 4 { return phpv.ZFalse.ZVal(), nil }
+-	cnt := 0; if args[0].GetType() == phpv.ZtArray { cnt = int(args[0].AsArray(ctx).Count(ctx)) }
++	if len(args) < 4 {
++		return phpv.ZFalse.ZVal(), nil
++	}
++	cnt := 0
++	if args[0].GetType() == phpv.ZtArray {
++		cnt = int(args[0].AsArray(ctx).Count(ctx))
++	}
+ 	return phpv.ZInt(cnt).ZVal(), nil
+ }
+ func fncStreamResolveIncludePath(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+@@ -289,13 +392,15 @@
+ }
+ func fncNetGetInterfaces(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+ 	ifaces, err := net.Interfaces()
+-	if err != nil { return phpv.ZFalse.ZVal(), nil }
++	if err != nil {
++		return phpv.ZFalse.ZVal(), nil
++	}
+ 	result := phpv.NewZArray()
+ 	for _, iface := range ifaces {
+ 		ia := phpv.NewZArray()
+ 		ia.OffsetSet(ctx, phpv.ZStr("description"), phpv.ZString(iface.Name).ZVal())
+ 		ia.OffsetSet(ctx, phpv.ZStr("mtu"), phpv.ZInt(iface.MTU).ZVal())
+-		ia.OffsetSet(ctx, phpv.ZStr("up"), phpv.ZBool(iface.Flags&net.FlagUp!=0).ZVal())
++		ia.OffsetSet(ctx, phpv.ZStr("up"), phpv.ZBool(iface.Flags&net.FlagUp != 0).ZVal())
+ 		addrs, _ := iface.Addrs()
+ 		ua := phpv.NewZArray()
+ 		for _, addr := range addrs {
+@@ -319,37 +424,100 @@
+ func fncFpassthru(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+ 	var h phpv.Resource
+ 	_, err := core.Expand(ctx, args, &h)
+-	if err != nil { return nil, err }
++	if err != nil {
++		return nil, err
++	}
+ 	s, ok := h.(*stream.Stream)
+-	if !ok { return phpv.ZFalse.ZVal(), nil }
++	if !ok {
++		return phpv.ZFalse.ZVal(), nil
++	}
+ 	tot := 0
+ 	buf := make([]byte, 8192)
+-	for { n, re := s.Read(buf); if n > 0 { ctx.Write(buf[:n]); tot += n }; if re != nil { break } }
++	for {
++		n, re := s.Read(buf)
++		if n > 0 {
++			ctx.Write(buf[:n])
++			tot += n
++		}
++		if re != nil {
++			break
++		}
++	}
+ 	return phpv.ZInt(tot).ZVal(), nil
+ }
+ 
+ const (
+-	LOG_EMERG phpv.ZInt = 0; LOG_ALERT phpv.ZInt = 1; LOG_CRIT phpv.ZInt = 2; LOG_ERR phpv.ZInt = 3
+-	LOG_WARNING phpv.ZInt = 4; LOG_NOTICE phpv.ZInt = 5; LOG_INFO phpv.ZInt = 6; LOG_DEBUG phpv.ZInt = 7
+-	LOG_KERN phpv.ZInt = 0; LOG_USER phpv.ZInt = 8; LOG_MAIL phpv.ZInt = 16; LOG_DAEMON phpv.ZInt = 24
+-	LOG_AUTH phpv.ZInt = 32; LOG_SYSLOG phpv.ZInt = 40; LOG_LPR phpv.ZInt = 48; LOG_NEWS phpv.ZInt = 56
+-	LOG_UUCP phpv.ZInt = 64; LOG_CRON phpv.ZInt = 72; LOG_AUTHPRIV phpv.ZInt = 80
+-	LOG_LOCAL0 phpv.ZInt = 128; LOG_LOCAL1 phpv.ZInt = 136; LOG_LOCAL2 phpv.ZInt = 144; LOG_LOCAL3 phpv.ZInt = 152
+-	LOG_LOCAL4 phpv.ZInt = 160; LOG_LOCAL5 phpv.ZInt = 168; LOG_LOCAL6 phpv.ZInt = 176; LOG_LOCAL7 phpv.ZInt = 184
+-	LOG_PID phpv.ZInt = 1; LOG_CONS phpv.ZInt = 2; LOG_ODELAY phpv.ZInt = 4
+-	LOG_NDELAY phpv.ZInt = 8; LOG_NOWAIT phpv.ZInt = 16; LOG_PERROR phpv.ZInt = 32
+-	STREAM_SERVER_BIND phpv.ZInt = 4; STREAM_SERVER_LISTEN phpv.ZInt = 8; STREAM_CLIENT_CONNECT phpv.ZInt = 4
+-	STREAM_FILTER_READ phpv.ZInt = 1; STREAM_FILTER_WRITE phpv.ZInt = 2; STREAM_FILTER_ALL phpv.ZInt = 3
+-	STREAM_IS_URL phpv.ZInt = 1
+-	PSFS_PASS_ON phpv.ZInt = 2; PSFS_FEED_ME phpv.ZInt = 0; PSFS_ERR_FATAL phpv.ZInt = 1
+-	STREAM_SHUT_RD phpv.ZInt = 0; STREAM_SHUT_WR phpv.ZInt = 1; STREAM_SHUT_RDWR phpv.ZInt = 2
+-	STREAM_PF_UNIX phpv.ZInt = 1; STREAM_PF_INET phpv.ZInt = 2; STREAM_PF_INET6 phpv.ZInt = 10
+-	STREAM_SOCK_STREAM phpv.ZInt = 1; STREAM_SOCK_DGRAM phpv.ZInt = 2; STREAM_SOCK_RAW phpv.ZInt = 3
+-	STREAM_SOCK_SEQPACKET phpv.ZInt = 5; STREAM_SOCK_RDM phpv.ZInt = 4
+-	STREAM_IPPROTO_IP phpv.ZInt = 0; STREAM_IPPROTO_TCP phpv.ZInt = 6; STREAM_IPPROTO_UDP phpv.ZInt = 17
+-	STREAM_IPPROTO_ICMP phpv.ZInt = 1; STREAM_IPPROTO_RAW phpv.ZInt = 255
+-	DNS_A phpv.ZInt = 1; DNS_NS phpv.ZInt = 2; DNS_CNAME phpv.ZInt = 16; DNS_SOA phpv.ZInt = 32
+-	DNS_PTR phpv.ZInt = 2048; DNS_HINFO phpv.ZInt = 4096; DNS_CAA phpv.ZInt = 8192; DNS_MX phpv.ZInt = 16384
+-	DNS_TXT phpv.ZInt = 32768; DNS_SRV phpv.ZInt = 33554432; DNS_NAPTR phpv.ZInt = 67108864
+-	DNS_AAAA phpv.ZInt = 134217728; DNS_ANY phpv.ZInt = 268435456; DNS_ALL phpv.ZInt = 251721779
++	LOG_EMERG             phpv.ZInt = 0
++	LOG_ALERT             phpv.ZInt = 1
++	LOG_CRIT              phpv.ZInt = 2
++	LOG_ERR               phpv.ZInt = 3
++	LOG_WARNING           phpv.ZInt = 4
++	LOG_NOTICE            phpv.ZInt = 5
++	LOG_INFO              phpv.ZInt = 6
++	LOG_DEBUG             phpv.ZInt = 7
++	LOG_KERN              phpv.ZInt = 0
++	LOG_USER              phpv.ZInt = 8
++	LOG_MAIL              phpv.ZInt = 16
++	LOG_DAEMON            phpv.ZInt = 24
++	LOG_AUTH              phpv.ZInt = 32
++	LOG_SYSLOG            phpv.ZInt = 40
++	LOG_LPR               phpv.ZInt = 48
++	LOG_NEWS              phpv.ZInt = 56
++	LOG_UUCP              phpv.ZInt = 64
++	LOG_CRON              phpv.ZInt = 72
++	LOG_AUTHPRIV          phpv.ZInt = 80
++	LOG_LOCAL0            phpv.ZInt = 128
++	LOG_LOCAL1            phpv.ZInt = 136
++	LOG_LOCAL2            phpv.ZInt = 144
++	LOG_LOCAL3            phpv.ZInt = 152
++	LOG_LOCAL4            phpv.ZInt = 160
++	LOG_LOCAL5            phpv.ZInt = 168
++	LOG_LOCAL6            phpv.ZInt = 176
++	LOG_LOCAL7            phpv.ZInt = 184
++	LOG_PID               phpv.ZInt = 1
++	LOG_CONS              phpv.ZInt = 2
++	LOG_ODELAY            phpv.ZInt = 4
++	LOG_NDELAY            phpv.ZInt = 8
++	LOG_NOWAIT            phpv.ZInt = 16
++	LOG_PERROR            phpv.ZInt = 32
++	STREAM_SERVER_BIND    phpv.ZInt = 4
++	STREAM_SERVER_LISTEN  phpv.ZInt = 8
++	STREAM_CLIENT_CONNECT phpv.ZInt = 4
++	STREAM_FILTER_READ    phpv.ZInt = 1
++	STREAM_FILTER_WRITE   phpv.ZInt = 2
++	STREAM_FILTER_ALL     phpv.ZInt = 3
++	STREAM_IS_URL         phpv.ZInt = 1
++	PSFS_PASS_ON          phpv.ZInt = 2
++	PSFS_FEED_ME          phpv.ZInt = 0
++	PSFS_ERR_FATAL        phpv.ZInt = 1
++	STREAM_SHUT_RD        phpv.ZInt = 0
++	STREAM_SHUT_WR        phpv.ZInt = 1
++	STREAM_SHUT_RDWR      phpv.ZInt = 2
++	STREAM_PF_UNIX        phpv.ZInt = 1
++	STREAM_PF_INET        phpv.ZInt = 2
++	STREAM_PF_INET6       phpv.ZInt = 10
++	STREAM_SOCK_STREAM    phpv.ZInt = 1
++	STREAM_SOCK_DGRAM     phpv.ZInt = 2
++	STREAM_SOCK_RAW       phpv.ZInt = 3
++	STREAM_SOCK_SEQPACKET phpv.ZInt = 5
++	STREAM_SOCK_RDM       phpv.ZInt = 4
++	STREAM_IPPROTO_IP     phpv.ZInt = 0
++	STREAM_IPPROTO_TCP    phpv.ZInt = 6
++	STREAM_IPPROTO_UDP    phpv.ZInt = 17
++	STREAM_IPPROTO_ICMP   phpv.ZInt = 1
++	STREAM_IPPROTO_RAW    phpv.ZInt = 255
++	DNS_A                 phpv.ZInt = 1
++	DNS_NS                phpv.ZInt = 2
++	DNS_CNAME             phpv.ZInt = 16
++	DNS_SOA               phpv.ZInt = 32
++	DNS_PTR               phpv.ZInt = 2048
++	DNS_HINFO             phpv.ZInt = 4096
++	DNS_CAA               phpv.ZInt = 8192
++	DNS_MX                phpv.ZInt = 16384
++	DNS_TXT               phpv.ZInt = 32768
++	DNS_SRV               phpv.ZInt = 33554432
++	DNS_NAPTR             phpv.ZInt = 67108864
++	DNS_AAAA              phpv.ZInt = 134217728
++	DNS_ANY               phpv.ZInt = 268435456
++	DNS_ALL               phpv.ZInt = 251721779
+ )
+--- a/vendor/github.com/KarpelesLab/goro/ext/standard/fs_platform.go
++++ b/vendor/github.com/KarpelesLab/goro/ext/standard/fs_platform.go
+@@ -0,0 +1,27 @@
++package standard
++
++import "os"
++
++type fileStat struct {
++	dev, ino, mode, nlink, uid, gid, rdev int64
++	size, atime, mtime, ctime             int64
++	blksize, blocks                       int64
++}
++
++type resourceUsage struct {
++	userSec, userUsec, systemSec, systemUsec int64
++	maxRSS, ixRSS, idRSS, isRSS              int64
++	minorFaults, majorFaults, swaps          int64
++	inputBlocks, outputBlocks                int64
++	messagesSent, messagesReceived, signals  int64
++	voluntarySwitches, involuntarySwitches   int64
++}
++
++func fallbackFileStat(info os.FileInfo) fileStat {
++	size := info.Size()
++	modified := info.ModTime().Unix()
++	return fileStat{
++		mode: int64(info.Mode()), size: size, atime: modified, mtime: modified,
++		ctime: modified, blksize: 4096, blocks: (size + 511) / 512,
++	}
++}
+--- a/vendor/github.com/KarpelesLab/goro/ext/standard/fs_platform_unix.go
++++ b/vendor/github.com/KarpelesLab/goro/ext/standard/fs_platform_unix.go
+@@ -0,0 +1,92 @@
++//go:build !windows
++
++package standard
++
++import (
++	"fmt"
++	"log/syslog"
++	"os"
++	"syscall"
++)
++
++func platformSyslog(priority int, message string) error {
++	priorities := []syslog.Priority{syslog.LOG_EMERG, syslog.LOG_ALERT, syslog.LOG_CRIT, syslog.LOG_ERR, syslog.LOG_WARNING, syslog.LOG_NOTICE, syslog.LOG_INFO, syslog.LOG_DEBUG}
++	if priority < 0 || priority >= len(priorities) {
++		priority = len(priorities) - 1
++	}
++	writer, err := syslog.New(priorities[priority], "")
++	if err != nil {
++		return err
++	}
++	defer writer.Close()
++	_, err = fmt.Fprint(writer, message)
++	return err
++}
++
++func platformAccess(path string, mode uint32) error { return syscall.Access(path, mode) }
++
++func platformDevice(info os.FileInfo) (int64, bool) {
++	stat, ok := info.Sys().(*syscall.Stat_t)
++	if !ok || stat == nil {
++		return 0, false
++	}
++	return int64(stat.Dev), true
++}
++
++func platformUmask(mask int) int { return syscall.Umask(mask) }
++
++func platformDiskSpace(path string) (float64, float64, error) {
++	var stat syscall.Statfs_t
++	if err := syscall.Statfs(path, &stat); err != nil {
++		return 0, 0, err
++	}
++	return float64(stat.Bavail) * float64(stat.Bsize), float64(stat.Blocks) * float64(stat.Bsize), nil
++}
++
++func platformFileStat(info os.FileInfo) fileStat {
++	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat != nil {
++		return fileStat{
++			dev: int64(stat.Dev), ino: int64(stat.Ino), mode: int64(stat.Mode),
++			nlink: int64(stat.Nlink), uid: int64(stat.Uid), gid: int64(stat.Gid),
++			rdev: int64(stat.Rdev), size: stat.Size, atime: int64(stat.Atim.Sec),
++			mtime: int64(stat.Mtim.Sec), ctime: int64(stat.Ctim.Sec),
++			blksize: int64(stat.Blksize), blocks: stat.Blocks,
++		}
++	}
++	return fallbackFileStat(info)
++}
++
++func platformResourceUsage(children bool) (resourceUsage, error) {
++	who := syscall.RUSAGE_SELF
++	if children {
++		who = syscall.RUSAGE_CHILDREN
++	}
++	var usage syscall.Rusage
++	if err := syscall.Getrusage(who, &usage); err != nil {
++		return resourceUsage{}, err
++	}
++	return resourceUsage{
++		userSec: int64(usage.Utime.Sec), userUsec: int64(usage.Utime.Usec),
++		systemSec: int64(usage.Stime.Sec), systemUsec: int64(usage.Stime.Usec),
++		maxRSS: int64(usage.Maxrss), ixRSS: int64(usage.Ixrss), idRSS: int64(usage.Idrss), isRSS: int64(usage.Isrss),
++		minorFaults: int64(usage.Minflt), majorFaults: int64(usage.Majflt), swaps: int64(usage.Nswap),
++		inputBlocks: int64(usage.Inblock), outputBlocks: int64(usage.Oublock),
++		messagesSent: int64(usage.Msgsnd), messagesReceived: int64(usage.Msgrcv), signals: int64(usage.Nsignals),
++		voluntarySwitches: int64(usage.Nvcsw), involuntarySwitches: int64(usage.Nivcsw),
++	}, nil
++}
++
++func platformNice(increment int) error {
++	priority, err := syscall.Getpriority(syscall.PRIO_PROCESS, 0)
++	if err != nil {
++		return err
++	}
++	priority += increment
++	if priority > 19 {
++		priority = 19
++	}
++	if priority < -20 {
++		priority = -20
++	}
++	return syscall.Setpriority(syscall.PRIO_PROCESS, 0, priority)
++}
+--- a/vendor/github.com/KarpelesLab/goro/ext/standard/fs_platform_windows.go
++++ b/vendor/github.com/KarpelesLab/goro/ext/standard/fs_platform_windows.go
+@@ -0,0 +1,78 @@
++//go:build windows
++
++package standard
++
++import (
++	"errors"
++	"os"
++	"path/filepath"
++	"strings"
++	"syscall"
++	"unsafe"
++)
++
++func platformAccess(path string, mode uint32) error {
++	info, err := os.Stat(path)
++	if err != nil {
++		return err
++	}
++	if mode == 0x1 {
++		extension := strings.ToLower(filepath.Ext(path))
++		if info.IsDir() || extension == ".exe" || extension == ".com" || extension == ".bat" || extension == ".cmd" {
++			return nil
++		}
++		return syscall.EACCES
++	}
++	if mode == 0x2 && !info.IsDir() {
++		file, err := os.OpenFile(path, os.O_WRONLY, 0)
++		if err != nil {
++			return err
++		}
++		return file.Close()
++	}
++	file, err := os.Open(path)
++	if err != nil {
++		return err
++	}
++	return file.Close()
++}
++
++func platformDevice(os.FileInfo) (int64, bool) { return 0, false }
++
++func platformUmask(int) int { return 0 }
++
++func platformDiskSpace(path string) (float64, float64, error) {
++	kernel32 := syscall.NewLazyDLL("kernel32.dll")
++	procedure := kernel32.NewProc("GetDiskFreeSpaceExW")
++	wide, err := syscall.UTF16PtrFromString(path)
++	if err != nil {
++		return 0, 0, err
++	}
++	var available, total, free uint64
++	result, _, callErr := procedure.Call(
++		uintptr(unsafe.Pointer(wide)), uintptr(unsafe.Pointer(&available)),
++		uintptr(unsafe.Pointer(&total)), uintptr(unsafe.Pointer(&free)),
++	)
++	if result == 0 {
++		if callErr != nil && !errors.Is(callErr, syscall.Errno(0)) {
++			return 0, 0, callErr
++		}
++		return 0, 0, syscall.EINVAL
++	}
++	return float64(available), float64(total), nil
++}
++
++func platformFileStat(info os.FileInfo) fileStat {
++	result := fallbackFileStat(info)
++	if data, ok := info.Sys().(*syscall.Win32FileAttributeData); ok && data != nil {
++		result.atime = data.LastAccessTime.Nanoseconds() / 1e9
++		result.ctime = data.CreationTime.Nanoseconds() / 1e9
++	}
++	return result
++}
++
++func platformResourceUsage(bool) (resourceUsage, error) { return resourceUsage{}, nil }
++
++func platformNice(int) error { return syscall.EWINDOWS }
++
++func platformSyslog(int, string) error { return syscall.EWINDOWS }
+--- a/vendor/github.com/KarpelesLab/goro/ext/spl/file_info.go
++++ b/vendor/github.com/KarpelesLab/goro/ext/spl/file_info.go
+@@ -5,7 +5,6 @@
+ 	"os"
+ 	"path/filepath"
+ 	"strings"
+-	"syscall"
+ 
+ 	"github.com/KarpelesLab/goro/core"
+ 	"github.com/KarpelesLab/goro/core/phpobj"
+@@ -13,8 +12,8 @@
+ )
+ 
+ type splFileInfoData struct {
+-	path         string      // original path as passed (for display)
+-	resolvedPath string      // resolved absolute path (for file operations)
++	path         string // original path as passed (for display)
++	resolvedPath string // resolved absolute path (for file operations)
+ 	info         os.FileInfo
+ 	fileClass    *phpobj.ZClass // class for openFile(), default SplFileObject
+ 	infoClass    *phpobj.ZClass // class for getFileInfo()/getPathInfo(), default SplFileInfo
+@@ -372,11 +371,7 @@
+ 			fmt.Sprintf("SplFileInfo::getPerms(): stat failed for %s", sfiPathOrEmpty(d)))
+ 	}
+ 	// Return full mode including file type bits (like PHP's stat 'mode')
+-	sys := d.info.Sys()
+-	if stat, ok := sys.(*syscall.Stat_t); ok {
+-		return phpv.ZInt(stat.Mode).ZVal(), nil
+-	}
+-	return phpv.ZInt(d.info.Mode().Perm()).ZVal(), nil
++	return phpv.ZInt(splFileStatFor(d.info).mode).ZVal(), nil
+ }
+ 
+ func sfiGetInode(ctx phpv.Context, o *phpobj.ZObject, args []*phpv.ZVal) (*phpv.ZVal, error) {
+@@ -391,11 +386,7 @@
+ 		return nil, phpobj.ThrowError(ctx, phpobj.RuntimeException,
+ 			fmt.Sprintf("SplFileInfo::getInode(): stat failed for %s", sfiPathOrEmpty(d)))
+ 	}
+-	sys := d.info.Sys()
+-	if stat, ok := sys.(*syscall.Stat_t); ok {
+-		return phpv.ZInt(stat.Ino).ZVal(), nil
+-	}
+-	return phpv.ZInt(0).ZVal(), nil
++	return phpv.ZInt(splFileStatFor(d.info).ino).ZVal(), nil
+ }
+ 
+ func sfiGetOwner(ctx phpv.Context, o *phpobj.ZObject, args []*phpv.ZVal) (*phpv.ZVal, error) {
+@@ -410,11 +401,7 @@
+ 		return nil, phpobj.ThrowError(ctx, phpobj.RuntimeException,
+ 			fmt.Sprintf("SplFileInfo::getOwner(): stat failed for %s", sfiPathOrEmpty(d)))
+ 	}
+-	sys := d.info.Sys()
+-	if stat, ok := sys.(*syscall.Stat_t); ok {
+-		return phpv.ZInt(stat.Uid).ZVal(), nil
+-	}
+-	return phpv.ZInt(os.Getuid()).ZVal(), nil
++	return phpv.ZInt(splFileStatFor(d.info).uid).ZVal(), nil
+ }
+ 
+ func sfiGetGroup(ctx phpv.Context, o *phpobj.ZObject, args []*phpv.ZVal) (*phpv.ZVal, error) {
+@@ -429,11 +416,7 @@
+ 		return nil, phpobj.ThrowError(ctx, phpobj.RuntimeException,
+ 			fmt.Sprintf("SplFileInfo::getGroup(): stat failed for %s", sfiPathOrEmpty(d)))
+ 	}
+-	sys := d.info.Sys()
+-	if stat, ok := sys.(*syscall.Stat_t); ok {
+-		return phpv.ZInt(stat.Gid).ZVal(), nil
+-	}
+-	return phpv.ZInt(os.Getgid()).ZVal(), nil
++	return phpv.ZInt(splFileStatFor(d.info).gid).ZVal(), nil
+ }
+ 
+ func sfiGetLinkTarget(ctx phpv.Context, o *phpobj.ZObject, args []*phpv.ZVal) (*phpv.ZVal, error) {
+--- a/vendor/github.com/KarpelesLab/goro/ext/spl/file_object.go
++++ b/vendor/github.com/KarpelesLab/goro/ext/spl/file_object.go
+@@ -8,7 +8,6 @@
+ 	"os"
+ 	"path/filepath"
+ 	"strings"
+-	"syscall"
+ 
+ 	"github.com/KarpelesLab/goro/core"
+ 	"github.com/KarpelesLab/goro/core/phpobj"
+@@ -87,9 +86,9 @@
+ 	}
+ 	// Override/add SplFileObject methods
+ 	sfoOwnMethods := map[phpv.ZString]*phpv.ZClassMethod{
+-		"__construct":    {Name: "__construct", Method: phpobj.NativeMethod(sfoConstruct)},
+-		"fgets":          {Name: "fgets", Method: phpobj.NativeMethod(sfoFgets)},
+-		"fgetc":          {Name: "fgetc", Method: phpobj.NativeMethod(sfoFgetc)},
++		"__construct": {Name: "__construct", Method: phpobj.NativeMethod(sfoConstruct)},
++		"fgets":       {Name: "fgets", Method: phpobj.NativeMethod(sfoFgets)},
++		"fgetc":       {Name: "fgetc", Method: phpobj.NativeMethod(sfoFgetc)},
+ 		"fgetcsv": {Name: "fgetcsv", Method: &phpobj.NativeMethodNamed{
+ 			Fn: sfoFgetcsv,
+ 			Args: []*phpv.FuncArg{
+@@ -136,13 +135,13 @@
+ 				{VarName: "escape"},
+ 			},
+ 		}},
+-		"getcsvcontrol":  {Name: "getCsvControl", Method: phpobj.NativeMethod(sfoGetCsvControl)},
+-		"setmaxlinelen":  {Name: "setMaxLineLen", Method: phpobj.NativeMethod(sfoSetMaxLineLen)},
+-		"getmaxlinelen":  {Name: "getMaxLineLen", Method: phpobj.NativeMethod(sfoGetMaxLineLen)},
+-		"haschildren":    {Name: "hasChildren", Method: phpobj.NativeMethod(sfoHasChildren)},
+-		"getchildren":    {Name: "getChildren", Method: phpobj.NativeMethod(sfoGetChildren)},
+-		"__tostring":     {Name: "__toString", Method: phpobj.NativeMethod(sfoToString)},
+-		"__debuginfo":    {Name: "__debugInfo", Method: phpobj.NativeMethod(sfoDebugInfo)},
++		"getcsvcontrol": {Name: "getCsvControl", Method: phpobj.NativeMethod(sfoGetCsvControl)},
++		"setmaxlinelen": {Name: "setMaxLineLen", Method: phpobj.NativeMethod(sfoSetMaxLineLen)},
++		"getmaxlinelen": {Name: "getMaxLineLen", Method: phpobj.NativeMethod(sfoGetMaxLineLen)},
++		"haschildren":   {Name: "hasChildren", Method: phpobj.NativeMethod(sfoHasChildren)},
++		"getchildren":   {Name: "getChildren", Method: phpobj.NativeMethod(sfoGetChildren)},
++		"__tostring":    {Name: "__toString", Method: phpobj.NativeMethod(sfoToString)},
++		"__debuginfo":   {Name: "__debugInfo", Method: phpobj.NativeMethod(sfoDebugInfo)},
+ 		"__clone": {Name: "__clone", Modifiers: phpv.ZAttrPrivate, Method: phpobj.NativeMethod(func(ctx phpv.Context, o *phpobj.ZObject, args []*phpv.ZVal) (*phpv.ZVal, error) {
+ 			return nil, phpobj.ThrowError(ctx, phpobj.Error, "Trying to clone an uncloneable object of class SplFileObject")
+ 		})},
+@@ -868,30 +867,15 @@
+ 	}
+ 
+ 	result := phpv.NewZArray()
+-	sys := info.Sys()
+-	var stat *syscall.Stat_t
+-	if sys != nil {
+-		stat, _ = sys.(*syscall.Stat_t)
+-	}
+-
+-	dev := phpv.ZInt(0)
+-	ino := phpv.ZInt(0)
+-	nlink := phpv.ZInt(0)
+-	uid := phpv.ZInt(0)
+-	gid := phpv.ZInt(0)
+-	rdev := phpv.ZInt(0)
+-	blksize := phpv.ZInt(0)
+-	blocks := phpv.ZInt(0)
+-	if stat != nil {
+-		dev = phpv.ZInt(stat.Dev)
+-		ino = phpv.ZInt(stat.Ino)
+-		nlink = phpv.ZInt(stat.Nlink)
+-		uid = phpv.ZInt(stat.Uid)
+-		gid = phpv.ZInt(stat.Gid)
+-		rdev = phpv.ZInt(stat.Rdev)
+-		blksize = phpv.ZInt(stat.Blksize)
+-		blocks = phpv.ZInt(stat.Blocks)
+-	}
++	stat := splFileStatFor(info)
++	dev := phpv.ZInt(stat.dev)
++	ino := phpv.ZInt(stat.ino)
++	nlink := phpv.ZInt(stat.nlink)
++	uid := phpv.ZInt(stat.uid)
++	gid := phpv.ZInt(stat.gid)
++	rdev := phpv.ZInt(stat.rdev)
++	blksize := phpv.ZInt(stat.blksize)
++	blocks := phpv.ZInt(stat.blocks)
+ 
+ 	mode := phpv.ZInt(info.Mode())
+ 	size := phpv.ZInt(info.Size())
+--- a/vendor/github.com/KarpelesLab/goro/ext/spl/file_platform.go
++++ b/vendor/github.com/KarpelesLab/goro/ext/spl/file_platform.go
+@@ -0,0 +1,11 @@
++package spl
++
++import "os"
++
++type splFileStat struct {
++	dev, ino, mode, nlink, uid, gid, rdev, blksize, blocks int64
++}
++
++func fallbackSplFileStat(info os.FileInfo) splFileStat {
++	return splFileStat{mode: int64(info.Mode())}
++}
+--- a/vendor/github.com/KarpelesLab/goro/ext/spl/file_platform_unix.go
++++ b/vendor/github.com/KarpelesLab/goro/ext/spl/file_platform_unix.go
+@@ -0,0 +1,22 @@
++//go:build !windows
++
++package spl
++
++import (
++	"os"
++	"syscall"
++)
++
++func splFileStatFor(info os.FileInfo) splFileStat {
++	if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat != nil {
++		return splFileStat{
++			dev: int64(stat.Dev), ino: int64(stat.Ino), mode: int64(stat.Mode),
++			nlink: int64(stat.Nlink), uid: int64(stat.Uid), gid: int64(stat.Gid),
++			rdev: int64(stat.Rdev), blksize: int64(stat.Blksize), blocks: stat.Blocks,
++		}
++	}
++	result := fallbackSplFileStat(info)
++	result.uid = int64(os.Getuid())
++	result.gid = int64(os.Getgid())
++	return result
++}
+--- a/vendor/github.com/KarpelesLab/goro/ext/spl/file_platform_windows.go
++++ b/vendor/github.com/KarpelesLab/goro/ext/spl/file_platform_windows.go
+@@ -0,0 +1,7 @@
++//go:build windows
++
++package spl
++
++import "os"
++
++func splFileStatFor(info os.FileInfo) splFileStat { return fallbackSplFileStat(info) }

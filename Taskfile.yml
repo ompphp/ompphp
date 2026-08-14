@@ -1,0 +1,107 @@
+version: '3'
+
+vars:
+  COMPONENT_NAME:
+    sh: '{{if eq OS "windows"}}echo ompphp.dll{{else}}echo ompphp.so{{end}}'
+
+tasks:
+  default:
+    cmds:
+      - task: test
+
+  generate:
+    desc: Generate bindings from the pinned open.mp C API metadata
+    cmds:
+      - go run ./tools/codegen
+
+  generate:check:
+    desc: Verify generated bindings are current
+    cmds:
+      - task: generate
+      - git diff --exit-code -- sdk/src/Internal/api_generated.php sdk/src/Api sdk/src/Event/Events.php sdk/src/Constant cmd/component/native_generated.go cmd/component/native_generated.h cmd/component/events_generated.go cmd/component/events_generated.h
+
+  build:
+    desc: Build the standalone runtime runner
+    cmds:
+      - go build -o build/ompphp{{exeExt}} ./cmd/ompphp
+
+  component:
+    desc: Build the x86-64 Linux component
+    env:
+      CGO_ENABLED: '1'
+      GOARCH: amd64
+    cmds:
+      - go build -mod=vendor -buildmode=c-shared -o build/ompphp.so ./cmd/component
+
+  component:windows:
+    desc: Cross-build the x86-64 Windows component
+    env:
+      GOOS: windows
+      GOARCH: amd64
+      CGO_ENABLED: '1'
+      CC: x86_64-w64-mingw32-gcc
+    cmds:
+      - go build -mod=vendor -buildmode=c-shared -o build/ompphp.dll ./cmd/component
+
+  component:host:
+    desc: Build a host-architecture component for local diagnostics
+    env:
+      CGO_ENABLED: '1'
+    cmds:
+      - go build -mod=vendor -buildmode=c-shared -o build/{{.COMPONENT_NAME}} ./cmd/component
+
+  e2e:
+    desc: Load ompphp and execute PHP in the official open.mp Linux server
+    deps: [component]
+    cmds:
+      - ./tests/e2e-openmp.sh --skip-build
+
+  sdk:install:
+    cmds:
+      - composer install --working-dir=sdk --no-interaction --no-progress
+
+  sdk:test:
+    deps: [sdk:install]
+    cmds:
+      - composer validate --working-dir=sdk --strict
+      - composer test --working-dir=sdk
+
+  sdk:package:
+    desc: Package the Composer SDK artifact
+    vars:
+      VERSION: '{{default "0.1.0-dev" .VERSION}}'
+    cmds:
+      - go run ./tools/sdkpack -version {{.VERSION}}
+
+  examples:test:
+    desc: Validate and syntax-check the example gamemodes
+    cmds:
+      - for example in examples/*/composer.json; do composer validate --strict "$example"; done
+      - for example in examples/*/composer.json; do composer install --working-dir="$(dirname "$example")" --no-interaction --no-progress; done
+      - for gamemode in examples/*/gamemode.php; do php -l "$gamemode"; done
+
+  test:
+    deps: [generate]
+    cmds:
+      - go test ./...
+      - task: sdk:test
+
+  test:race:
+    deps: [generate]
+    cmds:
+      - go test -race ./...
+
+  check:
+    cmds:
+      - task: sdk:test
+      - task: examples:test
+      - task: test:race
+      - task: generate:check
+      - test -z "$(gofmt -l cmd internal tools)"
+      - go vet ./...
+      - git diff --check
+
+  clean:
+    cmds:
+      - go clean
+      - rm -f build/ompphp build/ompphp.exe build/ompphp.so build/ompphp.dll build/ompphp.h

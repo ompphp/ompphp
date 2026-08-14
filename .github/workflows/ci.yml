@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          tools: composer
+      - run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+      - run: test -z "$(gofmt -l cmd internal tools)"
+      - run: go vet ./...
+      - run: composer install --working-dir=sdk --no-interaction --no-progress
+      - run: composer validate --working-dir=sdk --strict
+      - run: composer test --working-dir=sdk
+      - run: for example in examples/*/composer.json; do composer install --working-dir="$(dirname "$example")" --no-interaction --no-progress; done
+      - run: go run ./tools/codegen
+      - run: git diff --exit-code -- sdk/src/Internal/api_generated.php sdk/src/Api sdk/src/Event/Events.php sdk/src/Constant cmd/component/native_generated.go cmd/component/native_generated.h cmd/component/events_generated.go cmd/component/events_generated.h
+      - run: go test -race ./...
+      - run: GOARCH=amd64 CGO_ENABLED=1 go build -mod=vendor -buildmode=c-shared -o build/ompphp.so ./cmd/component
+      - run: GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc go build -mod=vendor -buildmode=c-shared -o build/ompphp.dll ./cmd/component
+      - run: ./tests/e2e-openmp.sh --skip-build
+
+  windows-e2e:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+      - shell: pwsh
+        run: |
+          $env:CGO_ENABLED = '1'
+          $env:GOARCH = 'amd64'
+          $env:CC = 'C:\msys64\mingw64\bin\gcc.exe'
+          go build -mod=vendor -buildmode=c-shared -o build/ompphp.dll ./cmd/component
+      - shell: pwsh
+        run: ./tests/e2e-openmp.ps1

@@ -1,0 +1,221 @@
+package phpctx
+
+import (
+	"errors"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/KarpelesLab/goro/core/phpv"
+	"github.com/KarpelesLab/goro/core/stream"
+)
+
+// getIncludePath reads the include_path INI setting and returns it as a slice of directories.
+func (g *Global) getIncludePath() []string {
+	val := g.GetConfig("include_path", phpv.ZStr(".")).String()
+	if val == "" {
+		return []string{"."}
+	}
+	return strings.Split(val, ":")
+}
+
+type OpenContext int
+
+func (g *Global) getHandler(fn phpv.ZString) (stream.Handler, *url.URL, error) {
+	fnStr := string(fn)
+
+	u, err := url.Parse(fnStr)
+	if err != nil {
+		// Go's url.Parse rejects control characters (e.g. \r, \n) in URLs.
+		// PHP is more permissive, especially for data: URIs.
+		// Try to extract the scheme manually and build a minimal URL.
+		if idx := strings.Index(fnStr, ":"); idx > 0 {
+			scheme := strings.ToLower(fnStr[:idx])
+			// Only use this fallback for known schemes with opaque data
+			if scheme == "data" || scheme == "php" {
+				u = &url.URL{
+					Scheme: scheme,
+					Opaque: fnStr[idx+1:],
+				}
+				// For php: scheme, also parse host/path
+				if scheme == "php" {
+					rest := fnStr[idx+1:]
+					if strings.HasPrefix(rest, "//") {
+						rest = rest[2:]
+						slashIdx := strings.Index(rest, "/")
+						if slashIdx >= 0 {
+							u.Host = rest[:slashIdx]
+							u.Path = rest[slashIdx:]
+							u.Opaque = ""
+						} else {
+							u.Host = rest
+							u.Path = ""
+							u.Opaque = ""
+						}
+					}
+				}
+				err = nil
+			}
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	s := u.Scheme
+	if s == "" {
+		s = "file"
+	}
+
+	h, ok := g.streamHandlers[s]
+	if !ok {
+		return nil, u, os.ErrInvalid
+	}
+
+	return h, u, nil
+}
+
+// Open opens a file using PHP stream wrappers and returns a handler to said file.
+func (g *Global) Open(ctx phpv.Context, fn phpv.ZString, mode phpv.ZString, useIncludePath bool, streamContext ...phpv.Resource) (phpv.Stream, error) {
+	h, u, err := g.getHandler(fn)
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := h.Open(ctx, u, string(mode), streamContext...)
+	if err == nil {
+		return f, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+
+	// the docs didn't say if it should look in the
+	// include first or last, assuming the latter
+	if useIncludePath {
+		for _, p := range g.getIncludePath() {
+			var dirPath string
+			if filepath.IsAbs(p) {
+				dirPath = p
+			} else {
+				dirPath = filepath.Join(g.fileHandler.Root, p)
+			}
+
+			fullPath := filepath.Join(dirPath, string(fn))
+			f, err = g.fileHandler.OpenFile(ctx, fullPath, "r")
+			if err == nil {
+				return f, nil
+			}
+			if !errors.Is(err, os.ErrNotExist) {
+				return nil, err
+			}
+		}
+	}
+
+	return nil, os.ErrNotExist
+}
+
+// TODO: internal include() or require() should not use nextResourceID
+func (g *Global) openForInclusion(ctx phpv.Context, fn phpv.ZString) (*stream.Stream, error) {
+	// From the PHP docs:
+	//   If the file isn't found in the include_path,
+	//   include will finally check in the calling script's own directory
+	//   and the current working directory before failing.
+	// Note: this behaviour only applies to include_*, require_*.
+	// Functions that has $use_include_path (such as fopen)
+	// won't look in the script directory.
+
+	h, u, err := g.getHandler(fn)
+	if err != nil {
+		return nil, err
+	}
+	localFile := u.Scheme == "file" || u.Scheme == ""
+	if !localFile || filepath.IsAbs(u.Path) {
+		return h.Open(ctx, u, "r")
+	}
+
+	var f *stream.Stream
+	for _, p := range g.getIncludePath() {
+		var dirPath string
+		if filepath.IsAbs(p) {
+			dirPath = p
+		} else {
+			dirPath = filepath.Join(g.fileHandler.Root, p)
+		}
+
+		fullPath := filepath.Join(dirPath, string(fn))
+		f, err = g.fileHandler.OpenFile(ctx, fullPath, "r")
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	}
+
+	if f == nil {
+		// file is not found in the include path,
+		// look in script dir
+		scriptDir := filepath.Dir(string(ctx.GetScriptFile()))
+		path := phpv.ZString(filepath.Join(scriptDir, string(fn)))
+		f, err = g.fileHandler.OpenFile(ctx, string(path), "r")
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	}
+	if f == nil {
+		// file still not found,
+		// look in current working directory
+		path := phpv.ZString(filepath.Join(g.fileHandler.Cwd, string(fn)))
+		f, err = g.fileHandler.OpenFile(ctx, string(path), "r")
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	}
+
+	if f == nil {
+		return nil, os.ErrNotExist
+	}
+
+	return f, nil
+}
+
+func (g *Global) Exists(fn phpv.ZString) (bool, error) {
+	h, u, err := g.getHandler(fn)
+	if err != nil {
+		return false, err
+	}
+
+	return h.Exists(u)
+}
+
+func (g *Global) Chdir(d phpv.ZString) error {
+	// use file handler for chdir by default
+	h, ok := g.streamHandlers["file"]
+	if !ok {
+		return os.ErrInvalid
+	}
+
+	chd, ok := h.(stream.Chdir)
+	if !ok {
+		return os.ErrInvalid
+	}
+
+	return chd.Chdir(string(d))
+}
+
+func (g *Global) Getwd() phpv.ZString {
+	// use file handler for chdir by default
+	h, ok := g.streamHandlers["file"]
+	if !ok {
+		return ""
+	}
+
+	chd, ok := h.(stream.Chdir)
+	if !ok {
+		return ""
+	}
+
+	return phpv.ZString(chd.Getwd())
+}

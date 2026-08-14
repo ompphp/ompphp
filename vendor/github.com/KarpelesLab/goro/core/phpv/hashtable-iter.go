@@ -1,0 +1,200 @@
+package phpv
+
+import "iter"
+
+type zhashtableIterator struct {
+	t       *ZHashTable
+	cur     *hashTableVal
+	prevRef *hashTableVal // previous entry that was made a reference by CurrentMakeRef
+}
+
+func (z *zhashtableIterator) Current(ctx Context) (*ZVal, error) {
+	if !z.Valid(ctx) {
+		return nil, nil
+	}
+
+	value := z.cur.v
+	if !value.IsRef() {
+		value = value.Dup()
+	}
+
+	return value, nil
+}
+
+// CurrentRef returns the actual *ZVal stored in the hash table without copying,
+// used by var_dump to detect references
+func (z *zhashtableIterator) CurrentRef(ctx Context) (*ZVal, error) {
+	if !z.Valid(ctx) {
+		return nil, nil
+	}
+	return z.cur.v, nil
+}
+
+// CurrentMakeRef converts the current hash table entry into a reference and
+// returns a new ZVal that shares the same inner reference, enabling foreach &$v
+func (z *zhashtableIterator) CurrentMakeRef(ctx Context) (*ZVal, error) {
+	if !z.Valid(ctx) {
+		return nil, nil
+	}
+	// Unwrap previous entry's reference since the loop variable no longer
+	// points to it (simulates PHP's refcount-based reference collapsing).
+	// Use Value() for deep collapse: when yield-by-reference adds an extra
+	// MakeRef layer (triple chain outer→inner→innermost→value), a one-level
+	// collapse would leave a reference behind. Value() follows the full chain.
+	if z.prevRef != nil && z.prevRef != z.cur {
+		pv := z.prevRef.v
+		if inner, ok := pv.v.(*ZVal); ok {
+			pv.v = inner.Value()
+		}
+	}
+	v := z.cur.v
+	if !v.IsRef() {
+		// Wrap the value in a shared inner ZVal to create a reference
+		inner := NewZVal(v.v)
+		v.v = inner // hash table entry is now a reference
+	}
+	z.prevRef = z.cur
+	// Return a new reference pointing to the same inner value
+	return NewZVal(v.v.(*ZVal)), nil
+}
+
+// CleanupRef unwraps the last reference created by CurrentMakeRef.
+// This should be called after a by-reference foreach loop ends to remove
+// the reference wrapper from the last iterated element.
+// Uses Value() for deep collapse to handle multi-level ref chains (e.g. yield-by-ref).
+func (z *zhashtableIterator) CleanupRef() {
+	if z.prevRef != nil {
+		pv := z.prevRef.v
+		if inner, ok := pv.v.(*ZVal); ok {
+			pv.v = inner.Value()
+		}
+		z.prevRef = nil
+	}
+}
+
+func (z *zhashtableIterator) Key(ctx Context) (*ZVal, error) {
+	if !z.Valid(ctx) {
+		return nil, nil
+	}
+
+	return NewZVal(z.cur.k).Dup(), nil
+}
+
+func (z *zhashtableIterator) Next(ctx Context) (*ZVal, error) {
+	if z.cur == nil {
+		return nil, nil
+	}
+
+	// If current element was deleted, Valid() will already advance past it,
+	// so we only need to advance if current is NOT deleted.
+	if !z.cur.deleted {
+		z.cur = z.cur.next
+	}
+	return z.Current(ctx)
+}
+
+func (z *zhashtableIterator) Prev(ctx Context) (*ZVal, error) {
+	if z.cur == nil {
+		// Past end of array - go back to last element
+		z.cur = z.t.last
+		// Skip deleted entries
+		for z.cur != nil && z.cur.deleted {
+			z.cur = z.cur.prev
+		}
+		if z.cur == nil {
+			return nil, nil
+		}
+		return z.cur.v, nil
+	}
+
+	for z.cur != nil && z.cur.deleted {
+		z.cur = z.cur.prev
+	}
+
+	if z.cur == nil {
+		return nil, nil
+	}
+
+	z.cur = z.cur.prev
+	// Skip deleted entries
+	for z.cur != nil && z.cur.deleted {
+		z.cur = z.cur.prev
+	}
+	if z.cur == nil {
+		return nil, nil
+	}
+	return z.cur.v, nil
+}
+
+func (z *zhashtableIterator) Reset(ctx Context) (*ZVal, error) {
+	z.cur = z.t.first
+	return z.Current(ctx)
+}
+
+func (z *zhashtableIterator) ResetIfEnd(ctx Context) (*ZVal, error) {
+	if !z.Valid(ctx) {
+		z.cur = z.t.first
+		return z.Current(ctx)
+	}
+	return nil, nil
+}
+
+func (z *zhashtableIterator) End(ctx Context) (*ZVal, error) {
+	z.cur = z.t.last
+	return z.Current(ctx)
+}
+
+func (z *zhashtableIterator) Valid(ctx Context) bool {
+	for {
+		if z.cur == nil {
+			return false
+		}
+		if z.cur.deleted {
+			z.cur = z.cur.next
+			continue
+		}
+		return true
+	}
+}
+
+func (a *zhashtableIterator) Iterate(ctx Context) iter.Seq2[*ZVal, *ZVal] {
+	return func(yield func(*ZVal, *ZVal) bool) {
+		for ; a.Valid(ctx); a.Next(ctx) {
+			key, _ := a.Key(ctx)
+			value, _ := a.Current(ctx)
+
+			if !value.IsRef() {
+				value = value.Dup()
+			}
+
+			if !yield(key.Dup(), value) {
+				break
+			}
+		}
+	}
+}
+
+// IterateRaw returns an iterator that yields raw ZVals from the hash table
+// without copying, preserving reference wrappers. This is used by serialize()
+// to detect PHP references (& references) between values, and by FuncContext.
+// Release to walk locals for DecRef without triggering CoW-Dups on array
+// values.
+//
+// Both the key wrapper and value are returned by-reference; callers must not
+// mutate them. Skips deleted entries. Advances the cursor without calling
+// Next() (which goes via Current() and Dups the value — wasted work here).
+func (a *zhashtableIterator) IterateRaw(ctx Context) iter.Seq2[*ZVal, *ZVal] {
+	return func(yield func(*ZVal, *ZVal) bool) {
+		for a.cur != nil {
+			if a.cur.deleted {
+				a.cur = a.cur.next
+				continue
+			}
+			cur := a.cur
+			a.cur = a.cur.next
+			if !yield(NewZVal(cur.k), cur.v) {
+				return
+			}
+		}
+	}
+}

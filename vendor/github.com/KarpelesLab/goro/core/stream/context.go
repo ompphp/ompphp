@@ -1,0 +1,164 @@
+package stream
+
+import (
+	"fmt"
+
+	"github.com/KarpelesLab/goro/core/phpv"
+)
+
+type ContextOptions map[phpv.ZString]*phpv.ZVal
+
+type Context struct {
+	ID int
+
+	Options map[ /*wrapperName*/ phpv.ZString]ContextOptions
+	// ... where wrapperName can be: http, ftp, curl and others,
+	// see stream_context_create for list of known wrapper names.
+	// Map is used to allowed extension of new wrappers.
+
+	NotifParam phpv.Callable
+}
+
+func (c *Context) String() string { return "stream-context" }
+
+func (c *Context) GetType() phpv.ZType { return phpv.ZtResource }
+
+func (c *Context) ZVal() *phpv.ZVal { return phpv.NewZVal(c) }
+
+func (c *Context) Value() phpv.Val { return c }
+
+func (c *Context) AsVal(ctx phpv.Context, t phpv.ZType) (phpv.Val, error) {
+	switch t {
+	case phpv.ZtString:
+		return phpv.ZStr(fmt.Sprintf("Resource id #%d", c.ID)), nil
+	case phpv.ZtResource:
+		return c.ZVal(), nil
+	default:
+		return phpv.ZInt(c.ID).AsVal(ctx, t)
+	}
+}
+
+func (c *Context) GetResourceType() phpv.ResourceType {
+	return phpv.ResourceContext
+
+}
+func (c *Context) GetResourceID() int {
+	return c.ID
+}
+
+func (c *Context) SetOption(wrapperName, option phpv.ZString, value *phpv.ZVal) {
+	if _, ok := c.Options[wrapperName]; !ok {
+		c.Options[wrapperName] = ContextOptions{}
+	}
+	c.Options[wrapperName][option] = value
+}
+
+func (c *Context) GetOption(wrapperName, option phpv.ZString) (*phpv.ZVal, bool) {
+	options, ok := c.Options[wrapperName]
+	if !ok {
+		return nil, false
+	}
+	value, ok := options[option]
+	return value, ok
+}
+
+func NewContext(ctx phpv.Context) *Context {
+	return &Context{
+		ID:      ctx.Global().NextResourceID(),
+		Options: make(map[phpv.ZString]ContextOptions),
+	}
+}
+
+func NewContextFromZArray(ctx phpv.Context, options *phpv.ZArray, params *phpv.ZArray) *Context {
+	streamCtx := &Context{
+		ID:      ctx.Global().NextResourceID(),
+		Options: make(map[phpv.ZString]ContextOptions),
+	}
+	if options != nil {
+		for k1, entries := range options.Iterate(ctx) {
+			wrapperName := k1.AsString(ctx)
+			if _, ok := streamCtx.Options[wrapperName]; !ok {
+				streamCtx.Options[wrapperName] = ContextOptions{}
+			}
+
+			for option, value := range entries.AsArray(ctx).Iterate(ctx) {
+				option := option.AsString(ctx)
+				streamCtx.Options[wrapperName][option] = value
+			}
+		}
+	}
+
+	if params != nil {
+		v, _ := params.OffsetGet(ctx, phpv.ZStr("notification"))
+		if fn, ok := v.Value().(phpv.Callable); ok {
+			streamCtx.NotifParam = fn
+		}
+	}
+
+	return streamCtx
+}
+
+// SetParams sets the params of a stream context from a PHP array
+func (c *Context) SetParams(ctx phpv.Context, params *phpv.ZArray) {
+	if params == nil {
+		return
+	}
+	v, _ := params.OffsetGet(ctx, phpv.ZStr("notification"))
+	if v != nil && !v.IsNull() {
+		if fn, ok := v.Value().(phpv.Callable); ok {
+			c.NotifParam = fn
+		}
+	}
+	// Store options if provided within params
+	opts, _ := params.OffsetGet(ctx, phpv.ZStr("options"))
+	if opts != nil && opts.GetType() == phpv.ZtArray {
+		optArr := opts.AsArray(ctx)
+		for k1, entries := range optArr.Iterate(ctx) {
+			wrapperName := k1.AsString(ctx)
+			if _, ok := c.Options[wrapperName]; !ok {
+				c.Options[wrapperName] = ContextOptions{}
+			}
+			for option, value := range entries.AsArray(ctx).Iterate(ctx) {
+				option := option.AsString(ctx)
+				c.Options[wrapperName][option] = value
+			}
+		}
+	}
+}
+
+// GetParams returns a PHP array with the params of a stream context
+func (c *Context) GetParams(ctx phpv.Context) *phpv.ZArray {
+	result := phpv.NewZArray()
+	options := phpv.NewZArray()
+	for wrapperName, entries := range c.Options {
+		wrapperOptions := phpv.NewZArray()
+		options.OffsetSet(ctx, wrapperName.ZVal(), wrapperOptions.ZVal())
+		for k, v := range entries {
+			wrapperOptions.OffsetSet(ctx, k.ZVal(), v)
+		}
+	}
+	result.OffsetSet(ctx, phpv.ZStr("options"), options.ZVal())
+	if c.NotifParam != nil {
+		result.OffsetSet(ctx, phpv.ZStr("notification"), c.NotifParam.ZVal())
+	}
+	return result
+}
+
+func (c *Context) ToZArray(ctx phpv.Context) (options *phpv.ZArray, params *phpv.ZArray) {
+	options = phpv.NewZArray()
+	params = phpv.NewZArray()
+
+	for wrapperName, entries := range c.Options {
+		wrapperOptions := phpv.NewZArray()
+		options.OffsetSet(ctx, wrapperName.ZVal(), wrapperOptions.ZVal())
+		for k, v := range entries {
+			wrapperOptions.OffsetSet(ctx, k.ZVal(), v)
+		}
+	}
+
+	if c.NotifParam != nil {
+		params.OffsetSet(ctx, phpv.ZStr("notification"), c.NotifParam.ZVal())
+	}
+
+	return options, params
+}

@@ -1,0 +1,47 @@
+//go:build darwin
+// +build darwin
+
+package standard
+
+import (
+	"os"
+	"runtime"
+
+	"github.com/KarpelesLab/goro/core"
+	"github.com/KarpelesLab/goro/core/phpv"
+)
+
+// this is an approximate estimation of php_uname()
+func fncUname(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var modeArg *string
+	_, err := core.Expand(ctx, args, &modeArg)
+	if err != nil {
+		return nil, err
+	}
+
+	mode := core.Deref(modeArg, "a")
+
+	switch mode {
+	case "s":
+		return phpv.ZString("Darwin").ZVal(), nil
+	case "n":
+		n, err := os.Hostname()
+		if err != nil {
+			return nil, err
+		}
+		return phpv.ZString(n).ZVal(), nil
+	case "r":
+		return phpv.ZString("?").ZVal(), nil
+	case "m":
+		return phpv.ZString(runtime.GOARCH).ZVal(), nil
+	default:
+		fallthrough
+	case "a":
+		n, err := os.Hostname()
+		if err != nil {
+			return nil, err
+		}
+		// return full uname, ie "s n r v m"
+		return phpv.ZString("Darwin " + n + " " + runtime.GOARCH).ZVal(), nil
+	}
+}

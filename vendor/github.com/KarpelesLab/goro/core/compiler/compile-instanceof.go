@@ -1,0 +1,112 @@
+package compiler
+
+import (
+	"io"
+
+	"github.com/KarpelesLab/goro/core/phpobj"
+	"github.com/KarpelesLab/goro/core/phpv"
+	"github.com/KarpelesLab/goro/core/tokenizer"
+)
+
+type runInstanceOf struct {
+	v        phpv.Runnable
+	l        *phpv.Loc
+	c        phpv.ZString  // static class name (resolved)
+	cSrc     phpv.ZString  // original source class name for AST pretty-printing
+	classVar phpv.Runnable // dynamic class name (variable)
+}
+
+func compileInstanceOf(v phpv.Runnable, i *tokenizer.Item, c compileCtx) (phpv.Runnable, error) {
+	r := &runInstanceOf{l: i.Loc(), v: v}
+
+	// Check if next token is a variable
+	next, err := c.NextItem()
+	if err != nil {
+		return nil, err
+	}
+
+	if next.Type == tokenizer.T_VARIABLE {
+		r.classVar = &runVariable{v: phpv.ZString(next.Data[1:]), l: next.Loc()}
+		return r, nil
+	}
+
+	c.backup()
+	r.c, r.cSrc, err = compileClassNameWithSource(c)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+func (r *runInstanceOf) Dump(w io.Writer) error {
+	err := r.v.Dump(w)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write([]byte(" instanceof "))
+	if err != nil {
+		return err
+	}
+	if r.classVar != nil {
+		return r.classVar.Dump(w)
+	}
+	name := r.cSrc
+	if name == "" {
+		name = r.c
+	}
+	_, err = w.Write([]byte(name))
+	return err
+}
+
+func (r *runInstanceOf) Run(ctx phpv.Context) (*phpv.ZVal, error) {
+	var className phpv.ZString
+	if r.classVar != nil {
+		// Dynamic class name from variable
+		classVal, err := r.classVar.Run(ctx)
+		if err != nil {
+			return nil, err
+		}
+		// If the variable holds an object, use its class name
+		if classVal.GetType() == phpv.ZtObject {
+			className = classVal.Value().(phpv.ZObject).GetClass().GetName()
+		} else {
+			className = classVal.AsString(ctx)
+		}
+	} else {
+		className = r.c
+	}
+
+	v, err := r.v.Run(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return EvalInstanceOf(ctx, v, className)
+}
+
+// EvalInstanceOf implements `$v instanceof className`. Shared runtime
+// helper so both the AST runner and the VM emit a single point of
+// entry. `className` should already be resolved (static name from
+// compile time, or extracted from a dynamic variable).
+func EvalInstanceOf(ctx phpv.Context, v *phpv.ZVal, className phpv.ZString) (*phpv.ZVal, error) {
+	c, err := ctx.Global().GetClass(ctx, className, false)
+	if err != nil {
+		// For self/parent/static outside class scope, propagate the Error exception
+		switch className {
+		case "self", "parent", "static":
+			return nil, err
+		}
+		return phpv.ZBool(false).ZVal(), nil
+	}
+
+	if v.GetType() != phpv.ZtObject {
+		return phpv.ZBool(false).ZVal(), nil
+	}
+
+	o := v.Value().(phpv.ZObject)
+	// Use original class, not CurrentClass from GetKin
+	objClass := o.GetClass()
+	if zo, ok := o.(*phpobj.ZObject); ok {
+		objClass = zo.Class
+	}
+	return phpv.ZBool(objClass.InstanceOf(c)).ZVal(), nil
+}

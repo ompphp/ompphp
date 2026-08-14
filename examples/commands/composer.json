@@ -1,0 +1,8 @@
+{
+  "name": "ompphp/example-commands",
+  "description": "Command handling example for ompphp",
+  "license": "MPL-2.0",
+  "repositories": [{ "type": "path", "url": "../../sdk" }],
+  "require": { "ompphp/sdk": "dev-main" },
+  "config": { "platform": { "php": "8.2.0" } }
+}

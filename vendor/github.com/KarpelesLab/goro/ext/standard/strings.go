@@ -1,0 +1,3533 @@
+package standard
+
+import (
+	"bytes"
+	"crypto/md5"
+	"crypto/sha1"
+	"fmt"
+	"io"
+	"math"
+	"math/rand/v2"
+	"os"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"unicode"
+
+	"github.com/KarpelesLab/goro/core"
+	"github.com/KarpelesLab/goro/core/logopt"
+	"github.com/KarpelesLab/goro/core/phpctx"
+	"github.com/KarpelesLab/goro/core/phpobj"
+	"github.com/KarpelesLab/goro/core/phpv"
+)
+
+const trimChars = " \n\r\t\v\000\x0B"
+
+// > const
+var (
+	STR_PAD_LEFT  = phpv.ZInt(0)
+	STR_PAD_RIGHT = phpv.ZInt(1)
+	STR_PAD_BOTH  = phpv.ZInt(2)
+)
+
+var (
+	addSlashesReplacer = strings.NewReplacer(
+		`'`, `\'`,
+		`"`, `\"`,
+		`\`, `\\`,
+		"\000", "\\0",
+	)
+	nl2brReplacer = strings.NewReplacer(
+		"\r\n", "<br>\r\n",
+		"\n\r", "<br>\n\r",
+		"\r", "<br>\r",
+		"\n", "<br>\n",
+	)
+	nl2brReplacerXHTML = strings.NewReplacer(
+		"\r\n", "<br />\r\n",
+		"\n\r", "<br />\n\r",
+		"\r", "<br />\r",
+		"\n", "<br />\n",
+	)
+	quoteMetaReplacer = strings.NewReplacer(
+		`.`, `\.`,
+		`\`, `\\`,
+		`+`, `\+`,
+		`*`, `\*`,
+		`?`, `\?`,
+		`[`, `\[`,
+		`^`, `\^`,
+		`]`, `\]`,
+		`(`, `\(`,
+		`$`, `\$`,
+		`)`, `\)`,
+	)
+)
+
+// > func string addcslashes ( string $string, string $charlist )
+func fncStrAddCSlashes(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var strArg phpv.ZString
+	var charlistArg phpv.ZString
+	_, err := core.Expand(ctx, args, &strArg, &charlistArg)
+	if err != nil {
+		return nil, err
+	}
+
+	str := []byte(strArg)
+	escaped := map[byte]struct{}{}
+
+	charlist := []byte(stripSlashes(string(charlistArg), true))
+	for i := 0; i < len(charlist); i++ {
+		c := charlist[i]
+
+		c2 := safeIndex(charlist, i+1)
+		c3 := safeIndex(charlist, i+2)
+		c4 := safeIndex(charlist, i+3, c)
+
+		if c2 == '.' && c3 == '.' {
+			if i+3 >= len(charlist) {
+				ctx.Warn("Invalid '..'-range, no character to the right of '..'")
+				escaped['.'] = struct{}{}
+			}
+			if c4 < c {
+				ctx.Warn("Invalid '..'-range, '..'-range needs to be incrementing")
+				escaped[c] = struct{}{}
+			} else {
+				for ch := c; ch <= c4; ch++ {
+					escaped[ch] = struct{}{}
+				}
+				i += 3
+			}
+
+		} else {
+			escaped[c] = struct{}{}
+		}
+	}
+
+	var buf bytes.Buffer
+	for _, c := range str {
+		if _, ok := escaped[c]; ok {
+			buf.Write(escapeByte(c))
+		} else {
+			buf.WriteByte(c)
+		}
+	}
+
+	return phpv.ZString(buf.String()).ZVal(), nil
+}
+
+// > func string addslashes ( string $string )
+func fncStrAddSlashes(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	_, err := core.Expand(ctx, args, &str)
+	if err != nil {
+		return nil, err
+	}
+
+	result := addSlashesReplacer.Replace(string(str))
+	return phpv.ZString(result).ZVal(), nil
+}
+
+// > func string chr ( int $codepoint )
+func fncChr(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var codepoint phpv.ZInt
+
+	_, err := core.Expand(ctx, args, &codepoint)
+	if err != nil {
+		return nil, err
+	}
+
+	if codepoint < 0 || codepoint > 255 {
+		ctx.Deprecated("Providing a value not in-between 0 and 255 is deprecated, this is because a byte value must be in the [0, 255] interval. The value used will be constrained using %% 256")
+	}
+
+	b := uint8(codepoint)
+	return phpv.ZString([]byte{b}).ZVal(), nil
+}
+
+// > func int ord ( string $string )
+func fncOrd(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str []byte
+
+	_, err := core.Expand(ctx, args, &str)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(str) == 0 {
+		return phpv.ZInt(0).ZVal(), nil
+	}
+	return phpv.ZInt(str[0]).ZVal(), nil
+}
+
+// > func string chunk_split ( string $string, int $length = 76, string $separator = "\r\n" )
+func fncStrChunkSplit(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var strArg phpv.ZString
+	var lengthArg *phpv.ZInt
+	var sepArg *phpv.ZString
+
+	_, err := core.Expand(ctx, args, &strArg, &lengthArg, &sepArg)
+	if err != nil {
+		return nil, err
+	}
+
+	str := string(strArg)
+	length := 76
+	sep := "\r\n"
+
+	if sepArg != nil {
+		sep = string(*sepArg)
+	}
+	if lengthArg != nil {
+		length = int(*lengthArg)
+		if length <= 0 {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "chunk_split(): Argument #2 ($length) must be greater than 0")
+		}
+	}
+
+	// Empty string: still return the separator (PHP behavior)
+	if len(str) == 0 {
+		return phpv.ZString(sep).ZVal(), nil
+	}
+
+	var buf bytes.Buffer
+	for index := 0; index < len(str); {
+		j := min(len(str), index+length)
+		s := str[index:j]
+		buf.WriteString(s)
+		buf.WriteString(sep)
+		index += len(s)
+	}
+
+	return phpv.ZString(buf.String()).ZVal(), nil
+}
+
+// >  func array|string count_chars ( string $string, int $mode = 0 )
+func fncStrCountChars(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var strArg phpv.ZString
+	var modeArg *phpv.ZInt
+
+	_, err := core.Expand(ctx, args, &strArg, &modeArg)
+	if err != nil {
+		return nil, err
+	}
+
+	mode := 0
+	if modeArg != nil {
+		mode = int(*modeArg)
+	}
+
+	switch mode {
+	case 0: // return an array with the byte-value as key and the frequency of every byte as value.
+		tally := make([]int, 256)
+		for _, n := range []byte(strArg) {
+			tally[n]++
+		}
+		result := phpv.NewZArray()
+		for _, n := range tally {
+			result.OffsetSet(ctx, nil, phpv.ZInt(n).ZVal())
+		}
+		return result.ZVal(), nil
+
+	case 1: // return same as 0 but only byte-values with a frequency greater than zero are listed.
+		tally := make([]int, 256)
+		for _, n := range []byte(strArg) {
+			tally[n]++
+		}
+
+		result := phpv.NewZArray()
+		for i := 0; i < 256; i++ {
+			n := tally[byte(i)]
+			if n > 0 {
+				k := phpv.ZInt(i).ZVal()
+				v := phpv.ZInt(n).ZVal()
+				result.OffsetSet(ctx, k, v)
+			}
+		}
+
+		return result.ZVal(), nil
+
+	case 2: // return same as 0 but only byte-values with a frequency equal to zero are listed.
+		tally := make([]int, 256)
+		for _, n := range []byte(strArg) {
+			tally[n]++
+		}
+
+		result := phpv.NewZArray()
+		for i := 0; i < 256; i++ {
+			if n := tally[byte(i)]; n == 0 {
+				k := phpv.ZInt(byte(i)).ZVal()
+				v := phpv.ZInt(0).ZVal()
+				result.OffsetSet(ctx, k, v)
+			}
+		}
+
+		return result.ZVal(), nil
+
+	case 3: // a string containing all unique characters is returned.
+		tally := make([]int, 256)
+		for _, n := range []byte(strArg) {
+			tally[n]++
+		}
+
+		var buf bytes.Buffer
+		for i, n := range tally {
+			if n > 0 {
+				buf.WriteByte(byte(i))
+			}
+		}
+		return phpv.ZStr(buf.String()), nil
+
+	case 4: // a string containing all unique characters is returned.
+		tally := make([]int, 256)
+		for _, n := range []byte(strArg) {
+			tally[n]++
+		}
+
+		var buf bytes.Buffer
+		for i, n := range tally {
+			if n == 0 {
+				buf.WriteByte(byte(i))
+			}
+		}
+		return phpv.ZStr(buf.String()), nil
+
+	default:
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "count_chars(): Argument #2 ($mode) must be between 0 and 4 (inclusive)")
+	}
+}
+
+// >  func array explode ( string $separator, string $string, int $limit = PHP_INT_MAX )
+func fncStrExplode(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var sep, str phpv.ZString
+	var limitArg *phpv.ZInt
+
+	_, err := core.Expand(ctx, args, &sep, &str, &limitArg)
+	if err != nil {
+		return nil, err
+	}
+
+	if sep == "" {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "explode(): Argument #1 ($separator) must not be empty")
+	}
+
+	limit := math.MaxInt64
+	if limitArg != nil {
+		limit = int(*limitArg)
+	}
+
+	if limit == 0 {
+		limit = 1
+	}
+
+	fields := strings.SplitN(string(str), string(sep), limit)
+	if limit < 0 {
+		// return all elements except the last -limit items
+		fields = fields[0:max(0, len(fields)+limit)]
+	}
+
+	result := phpv.NewZArray()
+	for _, item := range fields {
+		result.OffsetSet(ctx, nil, phpv.ZStr(item))
+	}
+
+	return result.ZVal(), nil
+}
+
+// > func string implode ( string $separator, array $array )
+// > alias join
+func fncStrImplode(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var arg1 *phpv.ZVal
+	var arg2 core.Optional[*phpv.ZVal]
+
+	_, err := core.Expand(ctx, args, &arg1, &arg2)
+	if err != nil {
+		return nil, err
+	}
+
+	var sep phpv.ZString
+	var array *phpv.ZArray
+
+	// PHP 8: implode(separator, array) or implode(array) only.
+	// The legacy implode(array, separator) form is no longer supported.
+	if arg1.GetType() == phpv.ZtArray {
+		if arg2.HasArg() {
+			// PHP 8: implode(array, ...) with two args is TypeError - array not valid as separator
+			return nil, phpobj.ThrowError(ctx, phpobj.TypeError, "implode(): Argument #1 ($separator) must be of type string, array given")
+		}
+		array = arg1.AsArray(ctx)
+		sep = phpv.ZString("")
+	} else {
+		if !arg2.HasArg() {
+			return nil, phpobj.ThrowError(ctx, phpobj.TypeError, "implode(): If argument #1 ($separator) is of type string, argument #2 ($array) must be of type array, null given")
+		}
+		sep = arg1.AsString(ctx)
+		arg2Val := arg2.Get()
+		if arg2Val.GetType() == phpv.ZtArray {
+			array = arg2Val.AsArray(ctx)
+		} else if arg2Val.GetType() == phpv.ZtNull {
+			return nil, phpobj.ThrowError(ctx, phpobj.TypeError, "implode(): If argument #1 ($separator) is of type string, argument #2 ($array) must be of type array, null given")
+		} else {
+			return nil, phpobj.ThrowError(ctx, phpobj.TypeError, fmt.Sprintf("implode(): Argument #2 ($array) must be of type ?array, %s given", strings.ToLower(arg2Val.GetType().String())))
+		}
+	}
+
+	var buf bytes.Buffer
+	it := array.NewIterator()
+
+	i := 0
+	for ; it.Valid(ctx); it.Next(ctx) {
+		v, err := it.Current(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if i > 0 {
+			buf.WriteString(string(sep))
+		}
+		buf.WriteString(string(v.AsString(ctx)))
+		i++
+	}
+
+	return phpv.ZStr(buf.String()), nil
+}
+
+// > func string lcfirst ( string $string )
+func fncStrLcFirst(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+
+	_, err := core.Expand(ctx, args, &str)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(str) == 0 {
+		return str.ZVal(), nil
+	}
+	if str[0] < 0x41 || str[0] > 0x5a {
+		return str.ZVal(), nil
+	}
+
+	chars := []byte(str)
+	chars[0] = chars[0] + 32
+
+	return phpv.ZStr(string(chars)), nil
+
+}
+
+// > func string ltrim ( string $str [, string $character_mask ] )
+func fncStrLtrim(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var charsArg core.Optional[phpv.ZString]
+	_, err := core.Expand(ctx, args, &str, &charsArg)
+	if err != nil {
+		return nil, err
+	}
+
+	chars := expandCharacterRangesCtx(ctx, "ltrim", string(charsArg.GetOrDefault(trimChars)))
+	result := strings.TrimLeft(string(str), chars)
+	return phpv.ZString(result).ZVal(), nil
+}
+
+// > func string rtrim ( string $str [, string $character_mask ] )
+// > alias chop
+func fncStrRtrim(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var charsArg core.Optional[phpv.ZString]
+	_, err := core.Expand(ctx, args, &str, &charsArg)
+	if err != nil {
+		return nil, err
+	}
+
+	chars := expandCharacterRangesCtx(ctx, "rtrim", string(charsArg.GetOrDefault(trimChars)))
+	result := strings.TrimRight(string(str), chars)
+	return phpv.ZString(result).ZVal(), nil
+}
+
+// > func string trim ( string $str [, string $character_mask ] )
+func fncStrTrim(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var charsArg core.Optional[phpv.ZString]
+	_, err := core.Expand(ctx, args, &str, &charsArg)
+	if err != nil {
+		return nil, err
+	}
+
+	chars := expandCharacterRangesCtx(ctx, "trim", string(charsArg.GetOrDefault(trimChars)))
+	result := strings.Trim(string(str), chars)
+	return phpv.ZString(result).ZVal(), nil
+}
+
+// > func string md5 ( string $string, bool $binary = false )
+func fncStrMd5(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var binaryArg *phpv.ZBool
+
+	_, err := core.Expand(ctx, args, &str, &binaryArg)
+	if err != nil {
+		return nil, err
+	}
+
+	binary := false
+	if binaryArg != nil {
+		binary = bool(*binaryArg)
+	}
+
+	sum := md5.Sum([]byte(str))
+
+	var result string
+	if binary {
+		result = string(sum[:])
+	} else {
+		result = fmt.Sprintf("%x", sum)
+	}
+
+	return phpv.ZStr(result), nil
+}
+
+// > func string|false md5_file ( string $filename, bool $binary = false )
+func fncStrMd5File(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var filename phpv.ZString
+	var binaryArg *phpv.ZBool
+
+	_, err := core.Expand(ctx, args, &filename, &binaryArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	binary := false
+	if binaryArg != nil {
+		binary = bool(*binaryArg)
+	}
+
+	f, err := os.Open(string(filename))
+	if err != nil {
+		ctx.Warn("md5_file(%s): Failed to open stream: %s", string(filename), err.Error(), logopt.NoFuncName(true))
+		return phpv.ZBool(false).ZVal(), nil
+	}
+	defer f.Close()
+
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		ctx.Warn("md5_file(%s): %s", string(filename), err.Error(), logopt.NoFuncName(true))
+		return phpv.ZBool(false).ZVal(), nil
+	}
+
+	sum := h.Sum(nil)
+
+	var result string
+	if binary {
+		result = string(sum[:])
+	} else {
+		result = fmt.Sprintf("%x", sum)
+	}
+
+	return phpv.ZStr(result), nil
+}
+
+// > func string nl2br ( string $string, bool $use_xhtml = true )
+func fncStrNewLine2Br(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var useXHTMLArg *phpv.ZBool
+
+	_, err := core.Expand(ctx, args, &str, &useXHTMLArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	useXHTML := true
+	if useXHTMLArg != nil {
+		useXHTML = bool(*useXHTMLArg)
+	}
+
+	var result string
+	if useXHTML {
+		result = nl2brReplacerXHTML.Replace(string(str))
+	} else {
+		result = nl2brReplacer.Replace(string(str))
+	}
+
+	return phpv.ZStr(result), nil
+
+}
+
+// > func string number_format ( float $num, int $decimals = 0, ?string $decimal_separator = ".", ?string $thousands_separator = "," )
+func fncStrNumberFormat(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	// Check for NULL args before Expand converts them
+	decSepIsNull := len(args) > 2 && args[2] != nil && args[2].GetType() == phpv.ZtNull
+	thousSepIsNull := len(args) > 3 && args[3] != nil && args[3].GetType() == phpv.ZtNull
+
+	var num phpv.ZFloat
+	var decimalsArg *phpv.ZInt
+	var decimalSepArg *phpv.ZString
+	var thousandsSepArg *phpv.ZString
+
+	_, err := core.Expand(ctx, args, &num, &decimalsArg, &decimalSepArg, &thousandsSepArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	decimals := 0
+	decimalSep := "."
+	thousandsSep := ","
+
+	if decimalsArg != nil {
+		decimals = int(*decimalsArg)
+	}
+	if decimalSepArg != nil && !decSepIsNull {
+		decimalSep = string(*decimalSepArg)
+	}
+	if thousandsSepArg != nil && !thousSepIsNull {
+		thousandsSep = string(*thousandsSepArg)
+	}
+
+	f := float64(num)
+	negative := false
+	if f < 0 {
+		negative = true
+		f = -f
+	}
+
+	if math.IsNaN(f) {
+		return phpv.ZStr("NAN"), nil
+	}
+	if math.IsInf(f, 0) {
+		if negative {
+			return phpv.ZStr("-INF"), nil
+		}
+		return phpv.ZStr("INF"), nil
+	}
+
+	// Handle negative decimals: round to the left of the decimal point
+	if decimals < 0 {
+		// For extremely negative decimals (e.g. PHP_INT_MIN), Pow10 overflows
+		// to +Inf causing 0*Inf=NaN. Any value rounded to 10^N where N > ~18
+		// will always be 0 for finite floats.
+		if decimals < -308 {
+			f = 0
+		} else {
+			shift := math.Pow10(-decimals)
+			f = phpRoundHalfAwayFromZero(f/shift) * shift
+		}
+		decimals = 0
+	}
+
+	// Pre-round with PHP's "round half away from zero" mode before formatting,
+	// because Go's strconv.FormatFloat uses "round half to even" (banker's rounding)
+	// which differs from PHP's behavior.
+	// Only pre-round when the shift factor won't overflow to Inf (decimals <= 308).
+	// For larger decimals, the value already has enough precision and FormatFloat
+	// will pad with zeros.
+	if decimals >= 0 && decimals <= 308 {
+		shift := math.Pow10(decimals)
+		f = phpRoundHalfAwayFromZero(f*shift) / shift
+	}
+
+	formatted := strconv.FormatFloat(f, 'f', decimals, 64)
+
+	// Prevent negative zero: if the formatted result is all zeros, don't show negative sign
+	if negative {
+		allZero := true
+		for _, c := range formatted {
+			if c != '0' && c != '.' {
+				allZero = false
+				break
+			}
+		}
+		if allZero {
+			negative = false
+		}
+	}
+
+	intPart := formatted
+	decPart := ""
+	if dotIdx := strings.Index(formatted, "."); dotIdx >= 0 {
+		intPart = formatted[:dotIdx]
+		decPart = formatted[dotIdx+1:]
+	}
+
+	if decimals > 0 {
+		if len(decPart) < decimals {
+			decPart = decPart + strings.Repeat("0", decimals-len(decPart))
+		} else if len(decPart) > decimals {
+			decPart = decPart[:decimals]
+		}
+	}
+
+	if thousandsSep != "" && len(intPart) > 3 {
+		var buf bytes.Buffer
+		start := len(intPart) % 3
+		if start == 0 {
+			start = 3
+		}
+		buf.WriteString(intPart[:start])
+		for i := start; i < len(intPart); i += 3 {
+			buf.WriteString(thousandsSep)
+			buf.WriteString(intPart[i : i+3])
+		}
+		intPart = buf.String()
+	}
+
+	var result bytes.Buffer
+	if negative {
+		result.WriteRune('-')
+	}
+	result.WriteString(intPart)
+	if decimals > 0 {
+		result.WriteString(decimalSep)
+		result.WriteString(decPart)
+	}
+
+	return phpv.ZStr(result.String()), nil
+}
+
+// > fun int ord(string $character)
+func fncStrOrd(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var ch phpv.ZString
+
+	_, err := core.Expand(ctx, args, &ch)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(ch) == 0 {
+		return phpv.ZInt(0).ZVal(), nil
+	}
+
+	fc := []byte(ch)[0]
+	return phpv.ZInt(int(fc)).ZVal(), nil
+}
+
+// > func void parse_str ( string $encoded_string [, array &$result ] )
+func fncStrParseStr(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var arg core.OptionalRef[*phpv.ZVal]
+
+	_, err := core.Expand(ctx, args, &str, &arg)
+	if err != nil {
+		return nil, err
+	}
+
+	if !arg.HasArg() {
+		if err := ctx.Deprecated("Calling parse_str() without the result argument is deprecated"); err != nil {
+			return nil, err
+		}
+	}
+
+	var array phpv.ZArrayAccess
+	if !arg.HasArg() {
+		array = ctx.Parent(1)
+	} else if arg.Get().GetType() != phpv.ZtArray {
+		array = phpv.NewZArray()
+	} else {
+		arr := arg.Get().AsArray(ctx)
+		arr.Clear(ctx)
+		array = arr
+	}
+
+	err = parseQuery(ctx, string(str), array)
+	if err != nil {
+		return nil, err
+	}
+
+	if arg.HasArg() {
+		arr := array.(*phpv.ZArray)
+		arg.Set(ctx, arr.ZVal())
+	}
+
+	return nil, nil
+}
+
+// > func string quotemeta ( string $string )
+func fncStrQuoteMeta(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+
+	_, err := core.Expand(ctx, args, &str)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	result := quoteMetaReplacer.Replace(string(str))
+	return phpv.ZStr(result), nil
+
+}
+
+// > func string sha1 ( string $string, bool $binary = false )
+func fncStrSha1(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var binaryArg *phpv.ZBool
+
+	_, err := core.Expand(ctx, args, &str, &binaryArg)
+	if err != nil {
+		return nil, err
+	}
+
+	binary := false
+	if binaryArg != nil {
+		binary = bool(*binaryArg)
+	}
+
+	sum := sha1.Sum([]byte(str))
+
+	var result string
+	if binary {
+		result = string(sum[:])
+	} else {
+		result = fmt.Sprintf("%x", sum)
+	}
+
+	return phpv.ZStr(result), nil
+}
+
+// > func string|false sha1_file ( string $filename, bool $binary = false )
+func fncStrSha1File(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var filename phpv.ZString
+	var binaryArg *phpv.ZBool
+
+	_, err := core.Expand(ctx, args, &filename, &binaryArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	binary := false
+	if binaryArg != nil {
+		binary = bool(*binaryArg)
+	}
+
+	f, err := os.Open(string(filename))
+	if err != nil {
+		ctx.Warn("sha1_file(%s): Failed to open stream: %s", string(filename), err.Error(), logopt.NoFuncName(true))
+		return phpv.ZBool(false).ZVal(), nil
+	}
+	defer f.Close()
+
+	h := sha1.New()
+	if _, err := io.Copy(h, f); err != nil {
+		ctx.Warn("sha1_file(%s): %s", string(filename), err.Error(), logopt.NoFuncName(true))
+		return phpv.ZBool(false).ZVal(), nil
+	}
+
+	sum := h.Sum(nil)
+
+	var result string
+	if binary {
+		result = string(sum[:])
+	} else {
+		result = fmt.Sprintf("%x", sum)
+	}
+
+	return phpv.ZStr(result), nil
+}
+
+// > func bool str_contains ( string $haystack, string $needle )
+func fncStrContains(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var haystack, needle phpv.ZString
+	_, err := core.Expand(ctx, args, &haystack, &needle)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	result := strings.Contains(string(haystack), string(needle))
+	return phpv.ZBool(result).ZVal(), nil
+}
+
+// > func bool str_ends_with ( string $haystack, string $needle )
+func fncStrEndsWith(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var haystack, needle phpv.ZString
+
+	_, err := core.Expand(ctx, args, &haystack, &needle)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	result := strings.HasSuffix(string(haystack), string(needle))
+	return phpv.ZBool(result).ZVal(), nil
+}
+
+// > func array str_getcsv ( string $string, string $separator = ",", string $enclosure = "\"", string $escape = "\\" )
+func fncStrGetCsv(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var sepArg, encArg, escArg *phpv.ZString
+
+	_, err := core.Expand(ctx, args, &str, &sepArg, &encArg, &escArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	sep := byte(',')
+	enc := byte('"')
+	esc := byte('\\')
+	hasEsc := true
+
+	if sepArg != nil {
+		if len(*sepArg) != 1 {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "str_getcsv(): Argument #2 ($separator) must be a single character")
+		}
+		sep = (*sepArg)[0]
+	}
+	if encArg != nil {
+		if len(*encArg) != 1 {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "str_getcsv(): Argument #3 ($enclosure) must be a single character")
+		}
+		enc = (*encArg)[0]
+	}
+	if escArg != nil {
+		if len(*escArg) == 0 {
+			hasEsc = false
+		} else if len(*escArg) != 1 {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "str_getcsv(): Argument #4 ($escape) must be empty or a single character")
+		} else {
+			esc = (*escArg)[0]
+		}
+	}
+
+	if str == "" {
+		// return an array with only a NULL element
+		result := phpv.NewZArray()
+		result.OffsetSet(ctx, nil, nil)
+		return result.ZVal(), nil
+	}
+
+	result := phpv.NewZArray()
+	input := []byte(str)
+	var buf bytes.Buffer
+	i := 0
+	fieldStart := true
+	needFinalField := true
+
+	for i < len(input) {
+		c := input[i]
+
+		// At field start, skip spaces if followed by enclosure
+		if fieldStart && c == ' ' {
+			// Look ahead to see if there's an enclosure after spaces
+			j := i
+			for j < len(input) && input[j] == ' ' {
+				j++
+			}
+			if j < len(input) && input[j] == enc {
+				i = j // skip to the enclosure
+				c = input[i]
+			}
+		}
+
+		if fieldStart && c == enc {
+			// Start of enclosed field
+			i++
+			for i < len(input) {
+				c = input[i]
+				if hasEsc && c == esc && esc != enc && i+1 < len(input) && input[i+1] == enc {
+					// Escaped enclosure via escape char (when esc != enc)
+					buf.WriteByte(enc)
+					i += 2
+					continue
+				}
+				if hasEsc && c == esc && esc == enc && i+1 < len(input) && input[i+1] == enc {
+					// Doubled enclosure as escape when esc == enc
+					buf.WriteByte(enc)
+					i += 2
+					continue
+				}
+				if !hasEsc && c == enc && i+1 < len(input) && input[i+1] == enc {
+					// Doubled enclosure (when escape is empty)
+					buf.WriteByte(enc)
+					i += 2
+					continue
+				}
+				if c == enc {
+					// End of enclosed field
+					i++
+					break
+				}
+				if hasEsc && c == esc && esc != enc && i+1 < len(input) {
+					// Escape any char inside enclosed field
+					i++
+					buf.WriteByte(input[i])
+					i++
+					continue
+				}
+				buf.WriteByte(c)
+				i++
+			}
+			// Skip to separator or end
+			for i < len(input) && input[i] != sep {
+				i++
+			}
+			result.OffsetSet(ctx, nil, phpv.ZStr(buf.String()))
+			buf.Reset()
+			fieldStart = true
+			needFinalField = false
+			if i < len(input) {
+				i++ // skip separator
+				needFinalField = true
+			}
+			continue
+		}
+
+		if c == sep {
+			result.OffsetSet(ctx, nil, phpv.ZStr(buf.String()))
+			buf.Reset()
+			fieldStart = true
+			needFinalField = true
+			i++
+			continue
+		}
+
+		buf.WriteByte(c)
+		fieldStart = false
+		needFinalField = true
+		i++
+	}
+
+	// Add final field if needed (unenclosed field at end, or trailing separator)
+	if needFinalField {
+		result.OffsetSet(ctx, nil, phpv.ZStr(buf.String()))
+	}
+
+	return result.ZVal(), nil
+}
+
+// > func mixed str_ireplace ( mixed $search , mixed $replace , mixed $subject [, int &$count ] )
+func stdStrIReplace(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	return strReplaceCommon(ctx, args, false)
+}
+
+// > func mixed str_replace ( mixed $search , mixed $replace , mixed $subject [, int &$count ] )
+func stdStrReplace(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	return strReplaceCommon(ctx, args, true)
+}
+
+// > func string str_rot13 ( string $str )
+func fncStrRot13(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var s phpv.ZString
+	_, err := core.Expand(ctx, args, &s)
+	if err != nil {
+		return nil, err
+	}
+
+	obuf := make([]byte, len(s))
+	for i, v := range []byte(s) {
+		if v >= 'a' && v <= 'z' {
+			v = 'a' + ((v - 'a' + 13) % 26)
+		} else if v >= 'A' && v <= 'Z' {
+			v = 'A' + ((v - 'A' + 13) % 26)
+		}
+		obuf[i] = v
+	}
+
+	return phpv.ZString(obuf).ZVal(), nil
+}
+
+// > func string str_pad ( string $string, int $length, string $pad_string = " ", int $pad_type = STR_PAD_RIGHT )
+func fncStrPad(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var length phpv.ZInt
+	var padStrArg *phpv.ZString
+	var padTypeArg *phpv.ZInt
+	_, err := core.Expand(ctx, args, &str, &length, &padStrArg, &padTypeArg)
+	if err != nil {
+		return nil, err
+	}
+
+	if length < 0 || len(str) >= int(length) {
+		return str.ZVal(), nil
+	}
+
+	// Check for unreasonable pad length
+	if int(length) > 1<<30 {
+		return nil, ctx.Errorf("Allowed memory size exhausted")
+	}
+
+	padStr := " "
+	padType := STR_PAD_RIGHT
+
+	if padStrArg != nil {
+		padStr = string(*padStrArg)
+	}
+	if padTypeArg != nil {
+		padType = *padTypeArg
+	}
+
+	if len(padStr) == 0 {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "str_pad(): Argument #3 ($pad_string) must be a non-empty string")
+	}
+
+	padNeeded := int(length) - len(str)
+	// Helper to generate exactly n chars of padding
+	makePad := func(n int) string {
+		if n <= 0 {
+			return ""
+		}
+		reps := (n / len(padStr)) + 1
+		return strings.Repeat(padStr, reps)[:n]
+	}
+
+	var buf bytes.Buffer
+	switch padType {
+	case STR_PAD_LEFT:
+		buf.WriteString(makePad(padNeeded))
+		buf.WriteString(string(str))
+	case STR_PAD_RIGHT:
+		buf.WriteString(string(str))
+		buf.WriteString(makePad(padNeeded))
+	case STR_PAD_BOTH:
+		left := padNeeded / 2
+		right := padNeeded - left
+		buf.WriteString(makePad(left))
+		buf.WriteString(string(str))
+		buf.WriteString(makePad(right))
+	}
+
+	return phpv.ZStr(buf.String()), nil
+}
+
+// > func string str_repeat ( string $string, int $times )
+func fncStrRepeat(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var times phpv.ZInt
+	_, err := core.Expand(ctx, args, &str, &times)
+	if err != nil {
+		return nil, err
+	}
+
+	if times < 0 {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "str_repeat(): Argument #2 ($times) must be greater than or equal to 0")
+	}
+
+	// Check memory limit before allocating large strings
+	allocSize := uint64(len(str)) * uint64(times)
+	if allocSize > 0 {
+		if g, ok := ctx.Global().(*phpctx.Global); ok {
+			if err := g.MemAlloc(ctx, allocSize); err != nil {
+				return nil, ctx.Errorf("Allowed memory size of %d bytes exhausted (tried to allocate %d bytes)",
+					g.MemLimit(), allocSize)
+			}
+		}
+	}
+
+	return phpv.ZStr(strings.Repeat(string(str), int(times))), nil
+}
+
+// > func string strtolower ( string $string )
+func fncStrToLower(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var s phpv.ZString
+	_, err := core.Expand(ctx, args, &s)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.ToLower().ZVal(), nil
+}
+
+// > func string strtoupper ( string $string )
+func fncStrToUpper(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var s phpv.ZString
+	_, err := core.Expand(ctx, args, &s)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.ToUpper().ZVal(), nil
+}
+
+// > func string str_shuffle ( string $string )
+func fncStrShuffle(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	_, err := core.Expand(ctx, args, &str)
+	if err != nil {
+		return nil, err
+	}
+
+	chars := []byte(str)
+	sort.Slice(chars, func(i, j int) bool {
+		return rand.IntN(2) == 1
+	})
+
+	return phpv.ZStr(string(chars)), nil
+}
+
+// > func array str_split ( string $string, int $length = 1 )
+func fncStrSplit(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var lengthArg *phpv.ZInt
+	_, err := core.Expand(ctx, args, &str, &lengthArg)
+	if err != nil {
+		return nil, err
+	}
+
+	length := 1
+	if lengthArg != nil {
+		length = int(*lengthArg)
+	}
+
+	if length < 1 {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "str_split(): Argument #2 ($length) must be greater than 0")
+	}
+
+	result := phpv.NewZArray()
+	for i := 0; i < len(str); i += length {
+		sub := str[i:min(i+length, len(str))]
+		result.OffsetSet(ctx, nil, sub.ZVal())
+	}
+
+	return result.ZVal(), nil
+}
+
+// > func bool str_starts_with (string $haystack, string $needle)
+func fncStrStartsWith(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var haystack, needle phpv.ZString
+
+	_, err := core.Expand(ctx, args, &haystack, &needle)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	result := strings.HasPrefix(string(haystack), string(needle))
+	return phpv.ZBool(result).ZVal(), nil
+}
+
+// > func array|int str_word_count ( string $string, int $format = 0, ?string $characters = null )
+func fncStrWordCount(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var formatArg *phpv.ZInt
+	var charsArg *phpv.ZString
+	_, err := core.Expand(ctx, args, &str, &formatArg, &charsArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	format := 0
+	chars := ""
+
+	if formatArg != nil {
+		format = int(*formatArg)
+	}
+	if charsArg != nil {
+		chars = string(*charsArg)
+	}
+
+	// PHP's str_word_count considers a character to be a word character if it is
+	// an ASCII alpha (a-zA-Z), an apostrophe, a dash, or one of the extra chars.
+	// Apostrophes and dashes are only word-internal (they must have an alpha on
+	// both sides to be counted).
+	isAlpha := func(c byte) bool {
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= 0x80) || strings.ContainsRune(chars, rune(c))
+	}
+	isWordInternal := func(c byte) bool {
+		return c == '\'' || c == '-'
+	}
+
+	s := string(str)
+
+	switch format {
+	case 0:
+		wordCount := 0
+		inWord := false
+		for i := 0; i < len(s); i++ {
+			c := s[i]
+			if isAlpha(c) {
+				if !inWord {
+					wordCount++
+				}
+				inWord = true
+			} else if isWordInternal(c) && inWord && i+1 < len(s) && isAlpha(s[i+1]) {
+				// apostrophe/dash connecting two word chars
+				inWord = true
+			} else {
+				inWord = false
+			}
+		}
+		return phpv.ZInt(wordCount).ZVal(), nil
+
+	case 1:
+		fallthrough
+	case 2:
+		words := phpv.NewZArray()
+		inWord := false
+		j := 0
+		for i := 0; i < len(s); i++ {
+			c := s[i]
+			if isAlpha(c) {
+				if !inWord {
+					j = i
+				}
+				inWord = true
+			} else if isWordInternal(c) && inWord && i+1 < len(s) && isAlpha(s[i+1]) {
+				// apostrophe/dash connecting two word chars - stay in word
+				inWord = true
+			} else {
+				if inWord {
+					word := phpv.ZString(s[j:i])
+					if format == 2 {
+						words.OffsetSet(ctx, phpv.ZInt(j), word.ZVal())
+					} else {
+						words.OffsetSet(ctx, nil, word.ZVal())
+					}
+				}
+				inWord = false
+			}
+		}
+		if inWord {
+			word := phpv.ZString(s[j:])
+			if format == 2 {
+				words.OffsetSet(ctx, phpv.ZInt(j), word.ZVal())
+			} else {
+				words.OffsetSet(ctx, nil, word.ZVal())
+			}
+		}
+
+		return words.ZVal(), nil
+	default:
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "str_word_count(): Argument #2 ($format) must be a valid format value")
+	}
+}
+
+// > func int strcasecmp ( string $string1, string $string2 )
+func fncStrCaseCmp(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str1, str2 phpv.ZString
+	_, err := core.Expand(ctx, args, &str1, &str2)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	result := strcmpCommon([]byte(str1), []byte(str2), false)
+	return phpv.ZInt(result).ZVal(), nil
+}
+
+// > func int strncasecmp ( string $string1, string $string2, int $len )
+func fncStrNCaseCmp(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str1, str2 []byte
+	var length phpv.ZInt
+	_, err := core.Expand(ctx, args, &str1, &str2, &length)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+	if int(length) < 0 {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "strncasecmp(): Argument #3 ($length) must be greater than or equal to 0")
+	}
+	str1 = str1[0:min(int(length), len(str1))]
+	str2 = str2[0:min(int(length), len(str2))]
+	result := strcmpCommon(str1, str2, false)
+	return phpv.ZInt(result).ZVal(), nil
+}
+
+// > func int strncmp ( string $string1, string $string2, int $len )
+func fncStrNCmp(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str1, str2 []byte
+	var length phpv.ZInt
+	_, err := core.Expand(ctx, args, &str1, &str2, &length)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+	if int(length) < 0 {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "strncmp(): Argument #3 ($length) must be greater than or equal to 0")
+	}
+	str1 = str1[0:min(int(length), len(str1))]
+	str2 = str2[0:min(int(length), len(str2))]
+	result := strcmpCommon(str1, str2, true)
+	return phpv.ZInt(result).ZVal(), nil
+}
+
+// > func int strcmp ( string $string1, string $string2 )
+func fncStrCmp(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str1, str2 phpv.ZString
+	_, err := core.Expand(ctx, args, &str1, &str2)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	result := strcmpCommon([]byte(str1), []byte(str2), true)
+	return phpv.ZInt(result).ZVal(), nil
+}
+
+// > func int strcoll ( string $string1, string $string2 )
+func fncStrColl(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str1, str2 phpv.ZString
+	_, err := core.Expand(ctx, args, &str1, &str2)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	return phpv.ZInt(strings.Compare(string(str1), string(str2))).ZVal(), nil
+}
+
+// > func int strcspn ( string $string, string $characters, int $offset = 0, ?int $length = null )
+func fncStrCspn(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var strArg phpv.ZString
+	var charsArg phpv.ZString
+	var offsetArg *phpv.ZInt
+	var lengthArg *phpv.ZInt
+	_, err := core.Expand(ctx, args, &strArg, &charsArg, &offsetArg, &lengthArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	offset := 0
+	length := len(strArg)
+	if offsetArg != nil {
+		offset = int(*offsetArg)
+	}
+	if lengthArg != nil {
+		length = int(*lengthArg)
+	}
+
+	str := substr([]byte(strArg), offset, length)
+	chars := []byte(charsArg)
+
+	segmentLen := 0
+	for _, b := range []byte(str) {
+		if bytes.ContainsRune(chars, rune(b)) {
+			break
+		}
+		segmentLen++
+	}
+
+	return phpv.ZInt(segmentLen).ZVal(), nil
+}
+
+// > func string|false stristr ( string $haystack, string $needle, bool $before_needle = false )
+func fncStrIStr(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var haystackArg phpv.ZString
+	// TODO: maybe handle deprecated case where needle not a string
+	var needleArg phpv.ZString
+	var beforeArg *phpv.ZBool
+	_, err := core.Expand(ctx, args, &haystackArg, &needleArg, &beforeArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	haystack := bytesLowerCaseArray([]byte(haystackArg))
+	needle := bytesLowerCaseArray([]byte(needleArg))
+
+	beforeNeedle := false
+	if beforeArg != nil {
+		beforeNeedle = bool(*beforeArg)
+	}
+
+	i := bytes.Index(haystack, needle)
+	if i < 0 {
+		return phpv.ZBool(false).ZVal(), nil
+	}
+
+	var result []byte
+	if beforeNeedle {
+		result = []byte(haystackArg)[0:i]
+	} else {
+		result = []byte(haystackArg)[i:]
+	}
+
+	return phpv.ZStr(string(result)), nil
+}
+
+// > func string|false strstr ( string $haystack, string $needle, bool $before_needle = false )
+// > alias strchr
+func fncStrStr(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var haystackArg phpv.ZString
+	var needleArg *phpv.ZVal
+	var beforeArg *phpv.ZBool
+	_, err := core.Expand(ctx, args, &haystackArg, &needleArg, &beforeArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	haystack := []byte(haystackArg)
+	beforeNeedle := false
+	var needle []byte
+
+	if needleArg.GetType() == phpv.ZtInt {
+		n := byte(needleArg.AsInt(ctx))
+		needle = []byte{n}
+	} else {
+		needle = []byte(needleArg.AsString(ctx))
+	}
+
+	if beforeArg != nil {
+		beforeNeedle = bool(*beforeArg)
+	}
+
+	i := bytes.Index(haystack, needle)
+	if i < 0 {
+		return phpv.ZBool(false).ZVal(), nil
+	}
+
+	var result []byte
+	if beforeNeedle {
+		result = haystack[0:i]
+	} else {
+		result = haystack[i:]
+	}
+
+	return phpv.ZStr(string(result)), nil
+}
+
+// > func string|false strrchr ( string $haystack, string $needle, bool $before_needle = false )
+func fncStrRChr(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var haystackArg phpv.ZString
+	var needleArg *phpv.ZVal
+	var beforeNeedle core.Optional[phpv.ZBool]
+	_, err := core.Expand(ctx, args, &haystackArg, &needleArg, &beforeNeedle)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	haystack := []byte(haystackArg)
+	var needle byte
+
+	if needleArg.GetType() == phpv.ZtInt {
+		needle = byte(needleArg.AsInt(ctx))
+	} else {
+		s := []byte(needleArg.AsString(ctx))
+		if len(s) == 0 {
+			return phpv.ZFalse.ZVal(), nil
+		}
+		needle = s[0]
+	}
+
+	i := bytes.LastIndexByte(haystack, needle)
+	if i < 0 {
+		return phpv.ZBool(false).ZVal(), nil
+	}
+
+	if bool(beforeNeedle.GetOrDefault(false)) {
+		return phpv.ZStr(string(haystack[:i])), nil
+	}
+	return phpv.ZStr(string(haystack[i:])), nil
+}
+
+// > func string strtr ( string $str , string $from , string $to )
+// > func string strtr ( string $str , array $replace_pairs )
+func fncStrTr(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	nargs := len(args)
+	if nargs >= 3 {
+		var strArg phpv.ZString
+		var from phpv.ZString
+		var to phpv.ZString
+		_, err := core.Expand(ctx, args, &strArg, &from, &to)
+		if err != nil {
+			return phpv.ZBool(false).ZVal(), err
+		}
+
+		str := []byte(strArg)
+		replacer := map[byte]byte{}
+
+		for i := 0; i < min(len(from), len(to)); i++ {
+			replacer[from[i]] = to[i]
+		}
+
+		for i, c := range str {
+			if rc, ok := replacer[c]; ok {
+				str[i] = rc
+			}
+		}
+
+		return phpv.ZStr(string(str)), nil
+	} else if nargs >= 2 {
+		var strArg phpv.ZString
+		var replacePairs *phpv.ZArray
+		_, err := core.Expand(ctx, args, &strArg, &replacePairs)
+		if err != nil {
+			return phpv.ZBool(false).ZVal(), err
+		}
+
+		str := []byte(strArg)
+
+		// // The longest keys will be tried first, so sort by length
+		keys := replacePairs.ByteArrayKeys(ctx)
+
+		// Filter out empty string keys (would cause infinite loop)
+		hasEmpty := false
+		filtered := keys[:0]
+		for _, key := range keys {
+			if len(key) == 0 {
+				hasEmpty = true
+				continue
+			}
+			filtered = append(filtered, key)
+		}
+		keys = filtered
+		if hasEmpty {
+			ctx.Warn("Ignoring replacement of empty string")
+		}
+
+		sort.Slice(keys, func(i, j int) bool {
+			if len(keys[i]) > len(keys[j]) {
+				return true
+			}
+			return false
+		})
+
+		// str will be only iterated only once,
+		// so previous replacement will not be overriden
+		// by other matches
+		var buf bytes.Buffer
+		for len(str) > 0 {
+			found := false
+			for _, key := range keys {
+				if !bytes.HasPrefix(str, key) {
+					continue
+				}
+
+				val, err := replacePairs.OffsetGet(ctx, phpv.ZString(key))
+				if err != nil {
+					return nil, err
+				}
+
+				replacement := []byte(val.String())
+				buf.Write(replacement)
+				str = str[len(key):]
+				found = true
+				break
+			}
+			if !found {
+				buf.WriteByte(str[0])
+				str = str[1:]
+			}
+		}
+
+		return phpv.ZStr(buf.String()), nil
+	}
+
+	return nil, phpobj.ThrowError(ctx, phpobj.ArgumentCountError, fmt.Sprintf("strtr() expects at least 2 arguments, %d given", nargs))
+}
+
+// > func string strip_tags ( string $string, array|string|null $allowed_tags = null )
+func fncStripTags(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var allowedTagsArg **phpv.ZVal
+	_, err := core.Expand(ctx, args, &str, &allowedTagsArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	allowedTags := map[string]struct{}{}
+
+	if allowedTagsArg != nil && !phpv.IsNull(*allowedTagsArg) {
+		arg := *allowedTagsArg
+		switch arg.GetType() {
+		case phpv.ZtString:
+			s := string(arg.AsString(ctx))
+			re := regexp.MustCompile(`</?(\w+)\s*/?>`)
+			for _, m := range re.FindAllStringSubmatch(s, -1) {
+				if len(m) < 2 {
+					continue
+				}
+				allowedTags[strings.ToLower(m[1])] = struct{}{}
+			}
+		case phpv.ZtArray:
+			it := arg.NewIterator()
+			for ; it.Valid(ctx); it.Next(ctx) {
+				item, err := it.Current(ctx)
+				if err != nil {
+					return nil, err
+				}
+				tag := strings.ToLower(item.String())
+				// Remove < and > from the tag name if present
+				tag = strings.TrimPrefix(tag, "<")
+				tag = strings.TrimPrefix(tag, "/")
+				tag = strings.TrimSuffix(tag, ">")
+				tag = strings.TrimSuffix(tag, "/")
+				tag = strings.TrimSpace(tag)
+				if tag != "" {
+					allowedTags[tag] = struct{}{}
+				}
+			}
+		}
+	}
+
+	// State machine-based strip_tags matching PHP behavior.
+	// States:
+	//   0 = normal text
+	//   1 = inside < (tag open), reading tag name
+	//   2 = inside tag body (after tag name)
+	//   3 = inside PHP tag (<? ... ?>)
+	//   4 = inside HTML comment (<!-- ... -->)
+	//   5 = inside single-quoted attribute value
+	//   6 = inside double-quoted attribute value
+	s := []byte(str)
+	n := len(s)
+	var buf bytes.Buffer
+	i := 0
+	for i < n {
+		c := s[i]
+		if c == '<' && i+1 < n {
+			// Check for PHP open tag or XML processing instruction
+			if s[i+1] == '?' {
+				// Determine if this is a PHP tag or XML PI.
+				// PHP tags: <?, <?=, <?php (skip to ?>)
+				// XML PIs: <?name where name is alpha and NOT "php" (skip to >)
+				isXmlPI := false
+				if i+2 < n {
+					c2 := s[i+2]
+					isAlpha := (c2 >= 'a' && c2 <= 'z') || (c2 >= 'A' && c2 <= 'Z')
+					if isAlpha {
+						// Check if it's <?php (case insensitive)
+						rest := string(s[i+2:])
+						if len(rest) >= 3 && strings.EqualFold(rest[:3], "php") {
+							// Check that after "php" there's a non-alpha char (whitespace, newline, etc.)
+							if len(rest) == 3 || !((rest[3] >= 'a' && rest[3] <= 'z') || (rest[3] >= 'A' && rest[3] <= 'Z')) {
+								isXmlPI = false // This is <?php, treat as PHP tag
+							} else {
+								isXmlPI = true // e.g. <?phpx, treat as XML PI
+							}
+						} else {
+							isXmlPI = true // e.g. <?xml, <?XML, etc.
+						}
+					}
+				}
+
+				if isXmlPI {
+					// XML Processing Instruction: skip until ?> (same as PHP tags)
+					j := i + 2
+					for j < n {
+						if s[j] == '?' && j+1 < n && s[j+1] == '>' {
+							j += 2
+							break
+						}
+						if s[j] == '>' {
+							j++ // fallback: skip to > if no ?> found
+							break
+						}
+						j++
+					}
+					i = j
+					continue
+				}
+
+				// PHP open tag: skip to ?> with nesting support
+				depth := 1
+				j := i + 2
+				for j < n && depth > 0 {
+					if s[j] == '<' && j+1 < n && s[j+1] == '?' {
+						depth++
+						j += 2
+						continue
+					}
+					if s[j] == '?' && j+1 < n && s[j+1] == '>' {
+						depth--
+						j += 2
+						continue
+					}
+					j++
+				}
+				i = j
+				continue
+			}
+			// Check for ASP-style tag: <% ... %>
+			if s[i+1] == '%' {
+				j := i + 2
+				for j < n {
+					if s[j] == '%' && j+1 < n && s[j+1] == '>' {
+						j += 2
+						break
+					}
+					j++
+				}
+				i = j
+				continue
+			}
+			// Check for HTML comment: <!--
+			if i+3 < n && s[i+1] == '!' && s[i+2] == '-' && s[i+3] == '-' {
+				// Skip until -->
+				j := i + 4
+				for j < n {
+					if s[j] == '-' && j+2 < n && s[j+1] == '-' && s[j+2] == '>' {
+						j += 3
+						break
+					}
+					j++
+				}
+				i = j
+				continue
+			}
+			// Check for SGML/XML processing: <!...>
+			if i+1 < n && s[i+1] == '!' {
+				j := i + 2
+				for j < n && s[j] != '>' {
+					j++
+				}
+				if j < n {
+					j++ // skip >
+				}
+				i = j
+				continue
+			}
+			// Regular HTML tag
+			j := i + 1
+			// Read tag name (optionally preceded by /)
+			isClosing := false
+			if j < n && s[j] == '/' {
+				isClosing = true
+				j++
+			}
+			tagStart := j
+			for j < n && ((s[j] >= 'a' && s[j] <= 'z') || (s[j] >= 'A' && s[j] <= 'Z') || (s[j] >= '0' && s[j] <= '9') || s[j] == ':' || s[j] == '-') {
+				j++
+			}
+			tagName := strings.ToLower(string(s[tagStart:j]))
+			_ = isClosing
+
+			if tagName == "" {
+				// Not a valid tag, output the '<' as literal
+				buf.WriteByte(c)
+				i++
+				continue
+			}
+
+			// Check for malformed self-closing: <tag/other> is not valid
+			// Only <tag/> or <tag / > are valid self-closing forms
+			tagMalformed := false
+			if j < n && s[j] == '/' {
+				if j+1 >= n || s[j+1] != '>' {
+					tagMalformed = true
+				}
+			}
+
+			// Now find the end of the tag, handling quotes and nested constructs
+			for j < n {
+				if s[j] == '\'' {
+					j++
+					for j < n && s[j] != '\'' {
+						j++
+					}
+					if j < n {
+						j++ // skip closing quote
+					}
+				} else if s[j] == '"' {
+					j++
+					for j < n && s[j] != '"' {
+						j++
+					}
+					if j < n {
+						j++ // skip closing quote
+					}
+				} else if s[j] == '<' && j+1 < n && s[j+1] == '?' {
+					// Nested PHP/XML processing instruction inside tag body
+					// Skip to ?> then continue looking for tag's >
+					j += 2
+					for j < n {
+						if s[j] == '?' && j+1 < n && s[j+1] == '>' {
+							j += 2
+							break
+						}
+						j++
+					}
+				} else if s[j] == '<' {
+					// Another '<' inside a tag - PHP discards the current partial tag
+					// and starts processing from the new '<'. This means we strip
+					// everything from the original '<' to here, then let the outer
+					// loop handle the new '<'.
+					break
+				} else if s[j] == '>' {
+					j++ // skip >
+					break
+				} else {
+					j++
+				}
+			}
+
+			// Check if tag is allowed (malformed tags are never allowed)
+			if !tagMalformed {
+				if _, allowed := allowedTags[tagName]; allowed {
+					buf.Write(s[i:j])
+				}
+			}
+			i = j
+			continue
+		}
+
+		buf.WriteByte(c)
+		i++
+	}
+
+	return phpv.ZStr(buf.String()), nil
+}
+
+// > func string stripcslashes ( string $string )
+func fncStripCSlashes(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	_, err := core.Expand(ctx, args, &str)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	return phpv.ZStr(stripSlashes(string(str), true)), nil
+}
+
+// > func int|false stripos ( string $haystack, string $needle, int $offset = 0 )
+func fncStrIPos(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var haystackArg, needleArg phpv.ZString
+	var offsetArg core.Optional[phpv.ZInt]
+	_, err := core.Expand(ctx, args, &haystackArg, &needleArg, &offsetArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	offset := int(offsetArg.GetOrDefault(0))
+	haystack := strings.ToLower(string(haystackArg))
+	needle := strings.ToLower(string(needleArg))
+	hsLen := len(haystack)
+
+	if offset < 0 {
+		offset = hsLen + offset
+		if offset < 0 {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, fmt.Sprintf("stripos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)"))
+		}
+	}
+	if offset > hsLen {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, fmt.Sprintf("stripos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)"))
+	}
+
+	haystack = haystack[offset:]
+
+	result := strings.Index(haystack, needle)
+	if result < 0 {
+		return phpv.ZBool(false).ZVal(), nil
+	}
+	return phpv.ZInt(result + offset).ZVal(), nil
+}
+
+// > func int|false strpos ( string $haystack, string $needle, int $offset = 0 )
+func fncStrPos(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var haystack, needle []byte
+	var offsetArg core.Optional[phpv.ZInt]
+	_, err := core.Expand(ctx, args, &haystack, &needle, &offsetArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	offset := int(offsetArg.GetOrDefault(0))
+	hsLen := len(haystack)
+
+	if offset < 0 {
+		offset = hsLen + offset
+		if offset < 0 {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, fmt.Sprintf("strpos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)"))
+		}
+	}
+	if offset > hsLen {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, fmt.Sprintf("strpos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)"))
+	}
+
+	haystack = haystack[offset:]
+
+	result := bytes.Index(haystack, needle)
+	if result < 0 {
+		return phpv.ZBool(false).ZVal(), nil
+	}
+
+	return phpv.ZInt(result + offset).ZVal(), nil
+}
+
+// > func int strspn ( string $subject , string $mask [, int $start [, int $length ]] )
+func fncStrSpn(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var subject phpv.ZString
+	var mask phpv.ZString
+	var startArg core.Optional[phpv.ZInt]
+	var lengthArg core.Optional[phpv.ZInt]
+	_, err := core.Expand(ctx, args, &subject, &mask, &startArg, &lengthArg)
+	if err != nil {
+		return phpv.ZInt(0).ZVal(), err
+	}
+
+	strLen := len(subject)
+	start := int(startArg.GetOrDefault(0))
+
+	// Handle negative start
+	if start < 0 {
+		start = strLen + start
+		if start < 0 {
+			start = 0
+		}
+	}
+	if start >= strLen {
+		return phpv.ZInt(0).ZVal(), nil
+	}
+
+	// Apply start offset
+	subject = subject[start:]
+
+	// Determine the segment length to check
+	maxlen := len(subject)
+	if lengthArg.HasArg() {
+		l := int(lengthArg.Get())
+		if l < 0 {
+			maxlen = len(subject) + l
+			if maxlen < 0 {
+				maxlen = 0
+			}
+		} else {
+			maxlen = l
+		}
+	}
+
+	if maxlen <= 0 {
+		return phpv.ZInt(0).ZVal(), nil
+	}
+
+	count := 0
+	for i, c := range string(subject) {
+		_ = i
+		if !strings.ContainsRune(string(mask), c) || count >= maxlen {
+			break
+		}
+		count++
+	}
+
+	return phpv.ZInt(count).ZVal(), nil
+}
+
+// > func int|false strrpos ( string $haystack, string $needle, int $offset = 0 )
+func fncStrRPos(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var haystack, needle []byte
+	var offsetArg core.Optional[phpv.ZInt]
+	_, err := core.Expand(ctx, args, &haystack, &needle, &offsetArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	offset := int(offsetArg.GetOrDefault(0))
+	hsLen := len(haystack)
+
+	if offset >= 0 {
+		if offset > hsLen {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, fmt.Sprintf("strrpos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)"))
+		}
+		haystack = haystack[offset:]
+		result := bytes.LastIndex(haystack, needle)
+		if result < 0 {
+			return phpv.ZBool(false).ZVal(), nil
+		}
+		return phpv.ZInt(result + offset).ZVal(), nil
+	} else {
+		n := hsLen + offset
+		if n < 0 {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, fmt.Sprintf("strrpos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)"))
+		}
+		// Search for last occurrence starting at or before position n
+		// We need to include matches that start at position n, so slice up to n+len(needle)
+		endPos := n + len(needle)
+		if endPos > hsLen {
+			endPos = hsLen
+		}
+		result := bytes.LastIndex(haystack[:endPos], needle)
+		if result < 0 || result > n {
+			return phpv.ZBool(false).ZVal(), nil
+		}
+		return phpv.ZInt(result).ZVal(), nil
+	}
+}
+
+// > func int|false strripos ( string $haystack, string $needle, int $offset = 0 )
+func fncStrIRPos(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var haystackArg, needleArg []byte
+	var offsetArg core.Optional[phpv.ZInt]
+	_, err := core.Expand(ctx, args, &haystackArg, &needleArg, &offsetArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	offset := int(offsetArg.GetOrDefault(0))
+	haystack := strings.ToLower(string(haystackArg))
+	needle := strings.ToLower(string(needleArg))
+	hsLen := len(haystack)
+
+	if offset >= 0 {
+		if offset > hsLen {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, fmt.Sprintf("strripos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)"))
+		}
+		haystack = haystack[offset:]
+		result := strings.LastIndex(haystack, needle)
+		if result < 0 {
+			return phpv.ZBool(false).ZVal(), nil
+		}
+		return phpv.ZInt(result + offset).ZVal(), nil
+	} else {
+		n := hsLen + offset
+		if n < 0 {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, fmt.Sprintf("strripos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)"))
+		}
+		// Search for last occurrence starting at or before position n
+		endPos := n + len(needle)
+		if endPos > hsLen {
+			endPos = hsLen
+		}
+		result := strings.LastIndex(haystack[:endPos], needle)
+		if result < 0 || result > n {
+			return phpv.ZBool(false).ZVal(), nil
+		}
+		return phpv.ZInt(result).ZVal(), nil
+	}
+}
+
+// > func string stripslashes ( string $string )
+func fncStripSlashes(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	_, err := core.Expand(ctx, args, &str)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	return phpv.ZStr(stripSlashes(string(str), false)), nil
+}
+
+// > func int strnatcasecmp ( string $string1, string $string2 )
+func fncStrNatCaseCmp(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var string1, string2 phpv.ZString
+	_, err := core.Expand(ctx, args, &string1, &string2)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	result := natCmp([]byte(string1), []byte(string2), false)
+	return phpv.ZInt(result).ZVal(), nil
+}
+
+// > func int strnatcmp ( string $string1, string $string2 )
+func fncStrNatCmp(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var string1, string2 phpv.ZString
+	_, err := core.Expand(ctx, args, &string1, &string2)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	result := natCmp([]byte(string1), []byte(string2), true)
+
+	return phpv.ZInt(result).ZVal(), nil
+}
+
+// > func string|false strpbrk ( string $string, string $characters )
+func fncStrPbrk(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str, chars phpv.ZString
+	_, err := core.Expand(ctx, args, &str, &chars)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	if len(chars) == 0 {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "strpbrk(): Argument #2 ($characters) must be a non-empty string")
+	}
+
+	i := bytes.IndexAny([]byte(str), string(chars))
+	if i < 0 {
+		return phpv.ZBool(false).ZVal(), nil
+	}
+
+	return str[i:].ZVal(), nil
+}
+
+// > func string strrev ( string $string )
+func fncStrRev(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	_, err := core.Expand(ctx, args, &str)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	data := []byte(str)
+	for i := 0; i < len(data)/2; i++ {
+		j := len(data) - i - 1
+		c := data[i]
+		data[i] = data[j]
+		data[j] = c
+	}
+
+	return phpv.ZStr(string(data)), nil
+}
+
+// strtokState is the between-call tokenization state kept on the per-request
+// Global. The pointer identity of strtokKey is what looks it up.
+type strtokState struct {
+	LastString *phpv.ZString
+	LastIndex  int
+}
+
+var strtokKey = phpv.NewStateKey("standard.strtok")
+
+func strtokGet(ctx phpv.Context) *strtokState {
+	g := ctx.Global()
+	if v := g.State(strtokKey); v != nil {
+		return v.(*strtokState)
+	}
+	s := &strtokState{}
+	g.SetState(strtokKey, s)
+	return s
+}
+
+// > func string|false strtok ( string $string, string $token )
+func fncStrtok(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var strArg phpv.ZString
+	var tokenArg *phpv.ZString
+	_, err := core.Expand(ctx, args, &strArg, &tokenArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	state := strtokGet(ctx)
+
+	index := 0
+	startIndex := 0
+	var str []byte
+	var token []byte
+	if tokenArg != nil {
+		str = []byte(strArg)
+		token = []byte(*tokenArg)
+		state.LastString = &strArg
+	} else {
+		token = []byte(strArg)
+		if state.LastString == nil {
+			ctx.Warn("Both arguments must be provided when starting tokenization")
+			return phpv.ZBool(false).ZVal(), nil
+		}
+		str = []byte(*state.LastString)
+		startIndex = max(state.LastIndex, 0)
+	}
+
+	// skip token delimeters
+	for ; startIndex < len(str); startIndex++ {
+		if !bytes.ContainsRune(token, rune(str[startIndex])) {
+			break
+		}
+	}
+	// read until token delimeter
+	for index = startIndex; index < len(str); index++ {
+		if bytes.ContainsRune(token, rune(str[index])) {
+			break
+		}
+	}
+
+	index = min(index, len(str))
+	startIndex = min(startIndex, index)
+	result := string(str[startIndex:index])
+
+	state.LastIndex = index + 1
+	if index >= len(str) && result == "" {
+		return phpv.ZBool(false).ZVal(), nil
+	}
+
+	return phpv.ZStr(result), nil
+}
+
+// > func string substr ( string $string, int $offset, ?int $length = null )
+func fncSubstr(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	var offsetArg phpv.ZInt
+	var lengthArg *phpv.ZInt
+	_, err := core.Expand(ctx, args, &str, &offsetArg, &lengthArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	offset := int(offsetArg)
+	length := len(str)
+	if lengthArg != nil {
+		length = int(*lengthArg)
+	}
+
+	result := substr([]byte(str), offset, length)
+	return phpv.ZStr(string(result)), nil
+}
+
+// > func int substr_compare ( string $haystack, string $needle, int $offset, ?int $length = null, bool $case_insensitive = false )
+func fncSubstrCompare(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	lengthIsNull := len(args) > 3 && args[3] != nil && args[3].GetType() == phpv.ZtNull
+
+	var haystackArg, needleArg phpv.ZString
+	var offsetArg phpv.ZInt
+	var lengthArg *phpv.ZInt
+	var caseInsensitiveArg *phpv.ZBool
+	_, err := core.Expand(ctx, args, &haystackArg, &needleArg, &offsetArg, &lengthArg, &caseInsensitiveArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	haystack := []byte(haystackArg)
+	needle := []byte(needleArg)
+	offset := int(offsetArg)
+	caseInsensitive := false
+
+	if caseInsensitiveArg != nil {
+		caseInsensitive = bool(*caseInsensitiveArg)
+	}
+
+	hasLength := lengthArg != nil && !lengthIsNull
+	var lengthVal int
+	if hasLength {
+		lengthVal = int(*lengthArg)
+	}
+
+	if hasLength && lengthVal < 0 {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "substr_compare(): Argument #4 ($length) must be greater than or equal to 0")
+	}
+
+	if offset < 0 {
+		offset = len(haystack) + offset
+		if offset < 0 {
+			offset = 0
+		}
+	}
+	if offset > len(haystack) {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "substr_compare(): Argument #3 ($offset) must be contained in argument #1 ($haystack)")
+	}
+
+	str1 := haystack[offset:]
+
+	if hasLength {
+		if lengthVal < len(str1) {
+			str1 = str1[:lengthVal]
+		}
+		if lengthVal < len(needle) {
+			needle = needle[:lengthVal]
+		}
+	}
+
+	result := strcmpCommon(str1, needle, !caseInsensitive)
+
+	if result < 0 {
+		result = -1
+	} else if result > 0 {
+		result = 1
+	}
+
+	return phpv.ZInt(result).ZVal(), nil
+}
+
+// > func int substr_count ( string $haystack, string $needle, int $offset, ?int $length = null, bool $case_insensitive = false )
+func fncSubstrCount(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var haystackArg, needleArg phpv.ZString
+	var offsetArg *phpv.ZInt
+	var lengthArg *phpv.ZInt
+	var caseInsensitiveArg *phpv.ZBool
+	_, err := core.Expand(ctx, args, &haystackArg, &needleArg, &offsetArg, &lengthArg, &caseInsensitiveArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	if len(needleArg) == 0 {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "substr_count(): Argument #2 ($needle) must not be empty")
+	}
+
+	haystack := []byte(haystackArg)
+	needle := []byte(needleArg)
+	offset := 0
+	if offsetArg != nil {
+		offset = int(*offsetArg)
+	}
+
+	// Handle negative offset
+	if offset < 0 {
+		offset = len(haystack) + offset
+	}
+
+	if offset < 0 || offset > len(haystack) {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "substr_count(): Argument #3 ($offset) must be contained in argument #1 ($haystack)")
+	}
+
+	haystack = haystack[offset:]
+
+	// If length is explicitly null, treat as not passed (search to end of string)
+	lengthIsNull := len(args) > 3 && args[3] != nil && args[3].GetType() == phpv.ZtNull
+	if lengthArg != nil && !lengthIsNull {
+		length := int(*lengthArg)
+		if length < 0 {
+			length = len(haystack) + length
+		}
+		if length < 0 || length > len(haystack) {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "substr_count(): Argument #4 ($length) must be contained in argument #1 ($haystack)")
+		}
+		haystack = haystack[:length]
+	}
+
+	count := 0
+	idx := bytes.Index(haystack, needle)
+	for idx >= 0 {
+		count++
+		haystack = haystack[idx+len(needle):]
+		idx = bytes.Index(haystack, needle)
+	}
+
+	return phpv.ZInt(count).ZVal(), nil
+}
+
+// > func mixed substr_replace ( mixed $string , mixed $replacement , mixed $start [, mixed $length ] )
+func fncSubstrReplace(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	if len(args) < 3 {
+		return phpv.ZBool(false).ZVal(), nil
+	}
+
+	inputArg := args[0]
+	replacementArg := args[1]
+	startArg := args[2]
+	var lengthArg *phpv.ZVal
+	if len(args) > 3 {
+		lengthArg = args[3]
+	}
+
+	var buf bytes.Buffer
+
+	getStart := func(index int) (int, error) {
+		if startArg.GetType() == phpv.ZtArray {
+			val, err := startArg.Array().OffsetGet(ctx, phpv.ZInt(index).Value())
+			if err != nil || val == nil {
+				return 0, nil
+			}
+			v, _ := val.As(ctx, phpv.ZtInt)
+			return int(v.Value().(phpv.ZInt)), nil
+		}
+		v, _ := startArg.As(ctx, phpv.ZtInt)
+		return int(v.Value().(phpv.ZInt)), nil
+	}
+
+	getLength := func(index int, inputLen int) (int, error) {
+		if lengthArg == nil {
+			return inputLen, nil
+		}
+		if lengthArg.GetType() == phpv.ZtArray {
+			val, err := lengthArg.Array().OffsetGet(ctx, phpv.ZInt(index).Value())
+			if err != nil || val == nil {
+				return inputLen, nil
+			}
+			v, _ := val.As(ctx, phpv.ZtInt)
+			return int(v.Value().(phpv.ZInt)), nil
+		}
+		v, _ := lengthArg.As(ctx, phpv.ZtInt)
+		return int(v.Value().(phpv.ZInt)), nil
+	}
+
+	getReplacement := func(index int) ([]byte, error) {
+		if replacementArg.GetType() == phpv.ZtArray {
+			val, err := replacementArg.Array().OffsetGet(ctx, phpv.ZInt(index).Value())
+			if err != nil || val == nil {
+				return nil, nil
+			}
+			return []byte(val.String()), nil
+		}
+		return []byte(replacementArg.AsString(ctx)), nil
+	}
+
+	if inputArg.GetType() == phpv.ZtString {
+		input := []byte(inputArg.AsString(ctx))
+		start, _ := getStart(0)
+		length, _ := getLength(0, len(input))
+
+		replacement, err := getReplacement(0)
+		if err != nil {
+			return nil, err
+		}
+
+		left, _, right := segment(input, start, length)
+		buf.Write(left)
+		buf.Write(replacement)
+		buf.Write(right)
+
+		return phpv.ZStr(buf.String()), nil
+	}
+
+	res := phpv.NewZArray()
+
+	i := 0
+	it := inputArg.NewIterator()
+	if it == nil {
+		return res.ZVal(), nil
+	}
+	for ; it.Valid(ctx); it.Next(ctx) {
+		v, err := it.Current(ctx)
+		if err != nil {
+			return nil, err
+		}
+		k, err := it.Key(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		input := []byte(v.String())
+		start, _ := getStart(i)
+		length, _ := getLength(i, len(input))
+
+		replacement, err := getReplacement(i)
+		if err != nil {
+			return nil, err
+		}
+
+		left, _, right := segment(input, start, length)
+		buf.Write(left)
+		buf.Write(replacement)
+		buf.Write(right)
+		res.OffsetSet(ctx, k, phpv.ZStr(buf.String()))
+		buf.Reset()
+
+		i++
+	}
+
+	return res.ZVal(), nil
+}
+
+// > func string ucfirst ( string $str )
+func fncUcFirst(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var strArg phpv.ZString
+	_, err := core.Expand(ctx, args, &strArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	str := []rune(strArg)
+	var buf bytes.Buffer
+	if len(str) > 0 {
+		buf.WriteString(strings.ToUpper(string(str[0:1])))
+		buf.WriteString(string(str[1:]))
+	}
+
+	return phpv.ZStr(buf.String()), nil
+}
+
+// > func string ucwords ( string $str [, string $delimiters = " \t\r\n\f\v" ] )
+func fncUcWords(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var strArg phpv.ZString
+	var delimetersArg *phpv.ZString
+	_, err := core.Expand(ctx, args, &strArg, &delimetersArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	str := []byte(strArg)
+	delimeters := []byte(" \t\r\n\f\v")
+	if delimetersArg != nil {
+		delimeters = []byte(*delimetersArg)
+	}
+
+	i := 0
+	var buf bytes.Buffer
+
+	for i < len(str) {
+		// skip delimeters
+		for i < len(str) && bytes.ContainsRune(delimeters, rune(str[i])) {
+			buf.WriteByte(str[i])
+			i++
+		}
+
+		if i < len(str) {
+			buf.WriteRune(unicode.ToUpper(rune(str[i])))
+			i++
+		}
+
+		// word chars
+		for i < len(str) && !bytes.ContainsRune(delimeters, rune(str[i])) {
+			buf.WriteByte(str[i])
+			i++
+		}
+	}
+
+	return phpv.ZStr(buf.String()), nil
+}
+
+// > func string soundex ( string $str )
+func fncSoundex(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	_, err := core.Expand(ctx, args, &str)
+	if err != nil {
+		return nil, ctx.FuncError(err)
+	}
+
+	// PHP soundex table: maps uppercase letter to soundex code
+	// 0 = vowel/skip, 1-6 = consonant codes
+	soundexTable := [26]byte{
+		0, '1', '2', '3', 0, '1', '2', 0, 0, '2', '2', '4', '5',
+		'5', 0, '1', '2', '6', '2', '3', 0, '1', 0, '2', 0, '2',
+	}
+
+	soundexCode := func(ch byte) byte {
+		if ch >= 'A' && ch <= 'Z' {
+			return soundexTable[ch-'A']
+		}
+		if ch >= 'a' && ch <= 'z' {
+			return soundexTable[ch-'a']
+		}
+		return 0
+	}
+
+	chars := []byte(str)
+
+	// Find the first alphabetic character
+	startIdx := -1
+	for i, c := range chars {
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+			startIdx = i
+			break
+		}
+	}
+
+	if startIdx < 0 {
+		// No alphabetic character found
+		return phpv.ZStr("0000"), nil
+	}
+
+	// First character of soundex is the uppercase first letter
+	code := [4]byte{chars[startIdx], '0', '0', '0'}
+	if code[0] >= 'a' && code[0] <= 'z' {
+		code[0] -= 32 // to uppercase
+	}
+
+	// Track the last non-zero soundex code to suppress adjacent duplicates
+	lastCode := soundexCode(chars[startIdx])
+	j := 1
+
+	for i := startIdx + 1; i < len(chars) && j < 4; i++ {
+		c := chars[i]
+		sc := soundexCode(c)
+		if sc == 0 {
+			// Vowel or non-alpha: reset lastCode only for vowels (not H/W)
+			// H and W don't reset the lastCode (they act as separators that
+			// allow same-coded adjacent consonants to be treated as one)
+			upper := c
+			if upper >= 'a' && upper <= 'z' {
+				upper -= 32
+			}
+			if upper != 'H' && upper != 'W' {
+				lastCode = 0
+			}
+			continue
+		}
+		if sc != lastCode {
+			code[j] = sc
+			j++
+			lastCode = sc
+		}
+	}
+
+	return phpv.ZStr(string(code[:])), nil
+}
+
+// > func string similar_text ( string $first , string $second [, float &$percent ] )
+func fncSimilarText(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var first phpv.ZString
+	var second phpv.ZString
+	var percent core.OptionalRef[phpv.ZFloat]
+	_, err := core.Expand(ctx, args, &first, &second, &percent)
+	if err != nil {
+		return nil, ctx.FuncError(err)
+	}
+
+	sum := commonCharacters(string(first), string(second))
+	if percent.HasArg() {
+		percent.Set(ctx, phpv.ZFloat(sum*200)/phpv.ZFloat(len(first)+len(second)))
+	}
+
+	return phpv.ZInt(sum).ZVal(), nil
+}
+
+func commonCharacters(a, b string) int {
+	pos1, pos2, max := 0, 0, 0
+	for i := 0; i < len(a); i++ {
+		for j := 0; j < len(b); j++ {
+			l := 0
+			for l+i < len(a) && l+j < len(b) {
+				if a[l+i] != b[l+j] {
+					break
+				}
+				l++
+			}
+			if l > max {
+				pos1 = i
+				pos2 = j
+				max = l
+			}
+		}
+	}
+
+	sum := max
+	if sum > 0 {
+		if pos1 > 0 && pos2 > 0 {
+			sum += commonCharacters(a[:pos1], b[:pos2])
+		}
+		if pos1+max < len(a) && pos2+max < len(b) && pos1+max <= len(a)/2 && pos2+max <= len(b)/2 {
+			a2 := a[pos1+max : len(a)-(pos1+max)]
+			b2 := b[pos2+max : len(b)-(pos2+max)]
+			sum += commonCharacters(a2, b2)
+		}
+	}
+
+	return sum
+}
+
+// > func string wordwrap ( string $str [, int $width = 75 [, string $break = "\n" [, bool $cut = FALSE ]]] )
+func fncWordWrap(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var strArg phpv.ZString
+	var widthArg *phpv.ZInt
+	var breakStrArg *phpv.ZString
+	var cutArg *phpv.ZBool
+	_, err := core.Expand(ctx, args, &strArg, &widthArg, &breakStrArg, &cutArg)
+	if err != nil {
+		return phpv.ZBool(false).ZVal(), err
+	}
+
+	str := []byte(strArg)
+	width := 75
+	breakStr := "\n"
+	cut := false
+	if widthArg != nil {
+		width = int(*widthArg)
+	}
+	if breakStrArg != nil {
+		breakStr = string(*breakStrArg)
+	}
+	if cutArg != nil {
+		cut = bool(*cutArg)
+	}
+
+	if width == 0 && cut {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "wordwrap(): Argument #4 ($cut_long_words) cannot be true when argument #2 ($width) is 0")
+	}
+
+	if len(breakStr) == 0 {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "wordwrap(): Argument #3 ($break) must not be empty")
+	}
+
+	if len(str) == 0 {
+		return phpv.ZStr(""), nil
+	}
+
+	// Faithful reimplementation of PHP's ext/standard/string.c wordwrap
+	brk := []byte(breakStr)
+	textLen := len(str)
+
+	// Special case for a single-character break with no cut
+	if len(brk) == 1 && !cut {
+		// PHP optimizes this: copy text, replace spaces in-place
+		newtext := make([]byte, textLen)
+		copy(newtext, str)
+
+		var laststart, lastspace int
+		for current := 0; current < textLen; current++ {
+			if str[current] == brk[0] {
+				laststart = current + 1
+				lastspace = current + 1
+			} else if str[current] == ' ' {
+				if current-laststart >= width {
+					newtext[current] = brk[0]
+					laststart = current + 1
+				}
+				lastspace = current
+			} else if current-laststart >= width && laststart != lastspace {
+				newtext[lastspace] = brk[0]
+				laststart = lastspace + 1
+			}
+		}
+		return phpv.ZStr(string(newtext)), nil
+	}
+
+	// Multiple character line break or forced cut
+	var buf bytes.Buffer
+	buf.Grow(textLen + textLen/max(width, 1)*len(brk) + len(brk))
+
+	var laststart, lastspace int
+	for current := 0; current < textLen; current++ {
+		// When we hit an existing break, copy to new buffer, and
+		// fix up laststart and lastspace
+		if str[current] == brk[0] &&
+			current+len(brk) <= textLen &&
+			string(str[current:current+len(brk)]) == breakStr {
+			buf.Write(str[laststart : current+len(brk)])
+			current += len(brk) - 1
+			laststart = current + 1
+			lastspace = current + 1
+			continue
+		}
+		// If it is a space, check if it is at the line boundary,
+		// copy and insert a break, or just keep track of it
+		if str[current] == ' ' {
+			if current-laststart >= width {
+				buf.Write(str[laststart:current])
+				buf.Write(brk)
+				laststart = current + 1
+			}
+			lastspace = current
+		} else if current-laststart >= width && cut && laststart >= lastspace {
+			// Cutting: accumulated enough chars and no space for this line
+			buf.Write(str[laststart:current])
+			buf.Write(brk)
+			laststart = current
+			lastspace = current
+		} else if current-laststart >= width && laststart < lastspace {
+			// Current word puts us over the linelength, copy back up
+			// until the last space, insert a break, and move up laststart
+			buf.Write(str[laststart:lastspace])
+			buf.Write(brk)
+			laststart = lastspace + 1
+			lastspace = lastspace + 1
+		}
+	}
+
+	// Copy over any stragglers
+	if laststart != textLen {
+		buf.Write(str[laststart:textLen])
+	}
+
+	return phpv.ZStr(buf.String()), nil
+}
+
+func strReplaceCommon(ctx phpv.Context, args []*phpv.ZVal, caseSensitive bool) (*phpv.ZVal, error) {
+	var search, replace, subject *phpv.ZVal
+	var count core.OptionalRef[phpv.ZInt]
+	_, err := core.Expand(ctx, args, &search, &replace, &subject, &count)
+	if err != nil {
+		return nil, err
+	}
+
+	// Resources are cast to strings (e.g. "Resource id #1") - no type error
+
+	if count.HasArg() {
+		count.Set(ctx, 0)
+	}
+
+	// Note: empty search strings are handled in doStrReplace (PHP skips them)
+
+	if subject.GetType() == phpv.ZtArray {
+		res := subject.Dup()
+		it := res.NewIterator()
+
+		for {
+			if !it.Valid(ctx) {
+				break
+			}
+
+			v, err := it.Current(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			err = v.CastTo(ctx, phpv.ZtString)
+			if err != nil {
+				return nil, err
+			}
+
+			vs := v.Value().(phpv.ZString)
+
+			vs, err = doStrReplace(ctx, vs, search, replace, count, caseSensitive)
+			if err != nil {
+				return nil, err
+			}
+
+			v.Set(vs.ZVal())
+			it.Next(ctx)
+		}
+
+		return res, nil
+	}
+
+	subject, err = subject.As(ctx, phpv.ZtString)
+	if err != nil {
+		return nil, err
+	}
+
+	vs := subject.Value().(phpv.ZString)
+
+	vs, err = doStrReplace(ctx, vs, search, replace, count, caseSensitive)
+	if err != nil {
+		return nil, err
+	}
+
+	return vs.ZVal(), nil
+}
+
+func doStrReplace(
+	ctx phpv.Context,
+	subject phpv.ZString,
+	search, replace *phpv.ZVal,
+	count core.OptionalRef[phpv.ZInt],
+	caseSensitive bool,
+) (phpv.ZString, error) {
+	if search.GetType() == phpv.ZtArray {
+		if replace.GetType() == phpv.ZtArray {
+			it1 := search.NewIterator()
+			it2 := replace.NewIterator()
+			totalCount := 0
+
+			for {
+				if !it1.Valid(ctx) {
+					// end of source,
+					if count.HasArg() {
+						count.Set(ctx, phpv.ZInt(totalCount))
+					}
+					return subject, nil
+				}
+				from, err := it1.Current(ctx)
+				if err != nil {
+					return subject, err
+				}
+
+				from, err = from.As(ctx, phpv.ZtString)
+				if err != nil {
+					return subject, err
+				}
+
+				from_b := []byte(from.AsString(ctx))
+
+				if len(from_b) == 0 {
+					it1.Next(ctx)
+					it2.Next(ctx)
+					continue
+				}
+
+				cnt := bytesCount([]byte(subject), from_b, caseSensitive)
+				if cnt == 0 {
+					// nothing to replace, skip
+					it1.Next(ctx)
+					it2.Next(ctx)
+					continue
+				}
+
+				var to *phpv.ZVal
+				if it2.Valid(ctx) {
+					to, err = it2.Current(ctx)
+					if err != nil {
+						return subject, err
+					}
+				}
+
+				to, err = to.As(ctx, phpv.ZtString)
+				if err != nil {
+					return subject, err
+				}
+
+				to_b := []byte(to.AsString(ctx))
+				subject = phpv.ZString(bytesReplace([]byte(subject), from_b, to_b, cnt, caseSensitive))
+
+				totalCount += cnt
+
+				it1.Next(ctx)
+				it2.Next(ctx)
+			}
+		}
+
+		var err error
+		replace, err = replace.As(ctx, phpv.ZtString)
+		if err != nil {
+			return subject, err
+		}
+
+		to_b := []byte(replace.AsString(ctx))
+
+		it1 := search.NewIterator()
+		totalCount := 0
+
+		for {
+			if !it1.Valid(ctx) {
+				// end of source,
+				if count.HasArg() {
+					count.Set(ctx, phpv.ZInt(totalCount))
+				}
+				return subject, nil
+			}
+			from, err := it1.Current(ctx)
+			if err != nil {
+				return subject, err
+			}
+
+			from, err = from.As(ctx, phpv.ZtString)
+			if err != nil {
+				return subject, err
+			}
+
+			from_b := []byte(from.AsString(ctx))
+
+			if len(from_b) == 0 {
+				it1.Next(ctx)
+				continue
+			}
+
+			cnt := bytesCount([]byte(subject), from_b, caseSensitive)
+			if cnt == 0 {
+				// nothing to replace, skip
+				it1.Next(ctx)
+				continue
+			}
+
+			subject = phpv.ZString(bytesReplace([]byte(subject), from_b, to_b, cnt, caseSensitive))
+
+			totalCount += cnt
+
+			it1.Next(ctx)
+		}
+	}
+
+	search, err := search.As(ctx, phpv.ZtString)
+	if err != nil {
+		return subject, err
+	}
+
+	from_b := []byte(search.AsString(ctx))
+
+	if len(from_b) == 0 {
+		return subject, nil
+	}
+
+	cnt := bytesCount([]byte(subject), from_b, caseSensitive)
+	if cnt == 0 {
+		return subject, nil
+	}
+
+	replace, err = replace.As(ctx, phpv.ZtString)
+	if err != nil {
+		return subject, err
+	}
+
+	to_b := []byte(replace.AsString(ctx))
+	subject = phpv.ZString(bytesReplace([]byte(subject), from_b, to_b, cnt, caseSensitive))
+	n := phpv.ZInt(cnt)
+	count.Set(ctx, n)
+
+	return subject, err
+}
+
+// TODO: move to another file or package
+func bytesReplace(s, old, new []byte, count int, caseSensitive bool) []byte {
+	if caseSensitive {
+		return bytes.Replace(s, old, new, count)
+	}
+
+	if len(s) == 0 || len(old) == 0 {
+		return s
+	}
+
+	replaced := 0
+	var buf bytes.Buffer
+	i := 0
+	for i <= len(s)-len(old) {
+		if count > 0 && replaced >= count {
+			buf.Write(s[i:])
+			return buf.Bytes()
+		}
+
+		match := true
+		for j := 0; j < len(old); j++ {
+			c1 := bytesLowerCase(s[i+j])
+			c2 := bytesLowerCase(old[j])
+			if c1 != c2 {
+				match = false
+				break
+			}
+		}
+
+		if match {
+			buf.Write(new)
+			replaced++
+			i += len(old)
+		} else {
+			buf.WriteByte(s[i])
+			i++
+		}
+	}
+	// Write any remaining bytes that couldn't form a complete match
+	if i < len(s) {
+		buf.Write(s[i:])
+	}
+
+	return buf.Bytes()
+}
+
+func bytesUpperCase(b byte) byte {
+	return byte(unicode.ToUpper(rune(b)))
+}
+
+func bytesLowerCase(b byte) byte {
+	return byte(unicode.ToLower(rune(b)))
+}
+
+func bytesLowerCaseArray(bs []byte) []byte {
+	var result []byte
+	for _, b := range bs {
+		b = bytesLowerCase(b)
+		result = append(result, b)
+	}
+	return result
+}
+
+func bytesCount(s, sep []byte, caseSensitive bool) int {
+	if caseSensitive {
+		return bytes.Count(s, sep)
+	}
+
+	if len(s) == 0 || len(sep) == 0 {
+		return 0
+	}
+
+	replaced := 0
+	for i := 0; i < len(s)-len(sep)+1; i++ {
+		match := true
+		for j := 0; j < len(sep); j++ {
+			c1 := bytesLowerCase(s[i+j])
+			c2 := bytesLowerCase(sep[j])
+			if c1 != c2 {
+				match = false
+				break
+			}
+		}
+
+		if match {
+			replaced++
+			i += len(sep) - 1
+		}
+	}
+
+	return replaced
+}
+
+func substr(strArg []byte, offset, length int) []byte {
+	var start, end int
+	if offset < 0 {
+		start = max(0, len(strArg)+offset)
+	} else {
+		start = min(offset, len(strArg))
+	}
+	if length < 0 {
+		end = max(0, len(strArg)+length)
+	} else {
+		end = min(start+length, len(strArg))
+	}
+
+	if start == 0 && end == len(strArg) {
+		return strArg
+	}
+
+	var result []byte
+	if start <= end {
+		result = strArg[start:end]
+	}
+
+	return result
+}
+
+func segment(strArg []byte, offset, length int) ([]byte, []byte, []byte) {
+	var start, end int
+	if offset < 0 {
+		start = max(0, len(strArg)+offset)
+	} else {
+		start = min(offset, len(strArg))
+	}
+	if length < 0 {
+		end = max(0, len(strArg)+length)
+	} else {
+		sum := start + length
+		if sum < start || sum > len(strArg) {
+			end = len(strArg)
+		} else {
+			end = sum
+		}
+	}
+	if end < start {
+		end = start
+	}
+
+	if start == 0 && end == len(strArg) {
+		return nil, strArg, nil
+	}
+
+	left := strArg[0:start]
+	mid := strArg[start:end]
+	right := strArg[end:]
+
+	return left, mid, right
+}
+
+func isNotLetter(c rune) bool {
+	return !unicode.IsLetter(c)
+}
+
+func strcmpCommon(str1, str2 []byte, caseSensitive bool) int {
+	minLen := min(len(str1), len(str2))
+	for i := 0; i < minLen; i++ {
+		c1 := str1[i]
+		c2 := str2[i]
+
+		if !caseSensitive {
+			c1 = bytesLowerCase(c1)
+			c2 = bytesLowerCase(c2)
+		}
+
+		if c1 != c2 {
+			return int(c1) - int(c2)
+		}
+	}
+	// If all compared characters match, compare by length using three-way comparison
+	// (matching PHP's ZEND_THREEWAY_COMPARE for length differences)
+	if len(str1) < len(str2) {
+		return -1
+	}
+	if len(str1) > len(str2) {
+		return 1
+	}
+	return 0
+}
+
+func escapeByte(b byte) []byte {
+	switch b {
+	case '\n':
+		return []byte(`\n`)
+	case '\r':
+		return []byte(`\r`)
+	case '\a':
+		return []byte(`\a`)
+	case '\t':
+		return []byte(`\t`)
+	case '\v':
+		return []byte(`\v`)
+	case '\b':
+		return []byte(`\b`)
+	case '\f':
+		return []byte(`\f`)
+	case 0:
+		return []byte(`\000`)
+	}
+	if b < 32 || b == 127 {
+		return []byte(fmt.Sprintf(`\%03o`, b))
+	}
+	return []byte{'\\', b}
+}
+
+func stripSlashes(str string, cStyle bool) string {
+	var buf bytes.Buffer
+	for i := 0; i < len(str); i++ {
+		if str[i] != '\\' {
+			buf.WriteByte(str[i])
+			continue
+		}
+
+		i++
+		if i >= len(str) {
+			break
+		}
+
+		if cStyle {
+			unescaped := true
+
+			switch str[i] {
+			case 'n':
+				buf.WriteString("\n")
+			case 'r':
+				buf.WriteString("\r")
+			case 'a':
+				buf.WriteString("\a")
+			case 't':
+				buf.WriteString("\t")
+			case 'v':
+				buf.WriteString("\v")
+			case 'b':
+				buf.WriteString("\b")
+			case 'f':
+				buf.WriteString("\f")
+			default:
+				unescaped = false
+			}
+			if unescaped {
+				continue
+			}
+		}
+
+		if str[i] == 'x' {
+			// hex escape sequence
+			i++
+			if i >= len(str) {
+				buf.WriteByte('x')
+				break
+			}
+
+			if !isHex(rune(str[i])) {
+				buf.WriteByte(str[i])
+				continue
+			}
+			j := i + 1
+			if isHex(rune(core.StrIdx(str, j))) {
+				j++
+			}
+
+			j = min(len(str), j)
+			n, err := strconv.ParseInt(string(str[i:j]), 16, 10)
+			if err == nil {
+				buf.WriteByte(byte(n))
+			}
+			i = j - 1
+		} else if c := str[i]; c >= '0' && c <= '7' {
+			// octal escape sequence (PHP accepts 1-3 digits in range 0-7)
+			j := i + 1
+			for n := 0; n < 2; n++ {
+				d := core.StrIdx(str, j)
+				if d < '0' || d > '7' {
+					break
+				}
+				j++
+			}
+
+			j = min(len(str), j)
+			n, err := strconv.ParseInt(string(str[i:j]), 8, 10)
+			if err == nil {
+				buf.WriteByte(byte(n))
+			}
+			i = j - 1
+		} else {
+			buf.WriteByte(str[i])
+		}
+	}
+
+	return buf.String()
+}
+
+func safeIndex[T any](xs []T, index int, defaultVal ...T) T {
+	var x T
+	if index >= 0 && index < len(xs) {
+		x = xs[index]
+	} else if len(defaultVal) > 0 {
+		x = defaultVal[0]
+	}
+	return x
+}
+
+// example:
+// expandCharacterRanges("abc..ghx..z") == "abcdefghxyz"
+func expandCharacterRanges(str string) string {
+	return expandCharacterRangesCtx(nil, "", str)
+}
+
+func expandCharacterRangesCtx(ctx phpv.Context, funcName string, str string) string {
+	var buf bytes.Buffer
+	b := []byte(str)
+	for i := 0; i < len(b); i++ {
+		// Check for '..' pattern starting at current position (no left side)
+		if b[i] == '.' && i+1 < len(b) && b[i+1] == '.' {
+			if ctx != nil {
+				ctx.Warn("Invalid '..'-range, no character to the left of '..'")
+			}
+			i++ // skip second '.'
+			continue
+		}
+		// Check if next two chars are '..' (this char is the left side of a range)
+		if i+2 < len(b) && b[i+1] == '.' && b[i+2] == '.' {
+			if i+3 >= len(b) {
+				// No character to the right of '..'
+				if ctx != nil {
+					ctx.Warn("Invalid '..'-range, no character to the right of '..'")
+				}
+				i += 2 // skip the '..' (from char already consumed by loop)
+				continue
+			}
+			from := b[i]
+			to := b[i+3]
+			if to < from {
+				if ctx != nil {
+					ctx.Warn("Invalid '..'-range, '..'-range needs to be incrementing")
+				}
+				i += 3
+				continue
+			}
+			// Check for chained ranges like a..b..c
+			if i+5 < len(b) && b[i+4] == '.' && b[i+5] == '.' {
+				if ctx != nil {
+					ctx.Warn("Invalid '..'-range")
+				}
+				// Skip past a..b..c entirely (consume through the second range)
+				if i+6 < len(b) {
+					i += 6
+				} else {
+					i += 5
+				}
+				continue
+			}
+			for c := from; c <= to; c++ {
+				buf.WriteByte(c)
+			}
+			i += 3 // skip from, .., to (loop will increment i again)
+		} else {
+			buf.WriteByte(b[i])
+		}
+	}
+	return buf.String()
+}
+
+// > func int levenshtein ( string $string1 , string $string2 [, int $insertion_cost = 1 [, int $replacement_cost = 1 [, int $deletion_cost = 1 ]]] )
+func fncLevenshtein(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var s1, s2 phpv.ZString
+	var insCost, repCost, delCost *phpv.ZInt
+	_, err := core.Expand(ctx, args, &s1, &s2, &insCost, &repCost, &delCost)
+	if err != nil {
+		return nil, err
+	}
+
+	ic, rc, dc := 1, 1, 1
+	if insCost != nil {
+		ic = int(*insCost)
+	}
+	if repCost != nil {
+		rc = int(*repCost)
+	}
+	if delCost != nil {
+		dc = int(*delCost)
+	}
+
+	a, b := []rune(string(s1)), []rune(string(s2))
+	la, lb := len(a), len(b)
+
+	if la == 0 {
+		return phpv.ZInt(lb * ic).ZVal(), nil
+	}
+	if lb == 0 {
+		return phpv.ZInt(la * dc).ZVal(), nil
+	}
+	d := make([][]int, la+1)
+	for i := range d {
+		d[i] = make([]int, lb+1)
+		d[i][0] = i * dc
+	}
+	for j := 0; j <= lb; j++ {
+		d[0][j] = j * ic
+	}
+	for i := 1; i <= la; i++ {
+		for j := 1; j <= lb; j++ {
+			if a[i-1] == b[j-1] {
+				d[i][j] = d[i-1][j-1]
+			} else {
+				del := d[i-1][j] + dc
+				ins := d[i][j-1] + ic
+				rep := d[i-1][j-1] + rc
+				d[i][j] = min(del, min(ins, rep))
+			}
+		}
+	}
+	return phpv.ZInt(d[la][lb]).ZVal(), nil
+}
+
+// > func string str_increment ( string $string )
+func fncStrIncrement(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	_, err := core.Expand(ctx, args, &str)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(str) == 0 {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "str_increment(): Argument #1 ($string) must not be empty")
+	}
+
+	// Validate: must be strictly alphanumeric
+	for _, c := range []byte(str) {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "str_increment(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters")
+		}
+	}
+
+	chars := []byte(str)
+	carry := true
+	for i := len(chars) - 1; i >= 0 && carry; i-- {
+		c := chars[i]
+		carry = false
+		if c >= 'a' && c <= 'z' {
+			if c == 'z' {
+				chars[i] = 'a'
+				carry = true
+			} else {
+				chars[i] = c + 1
+			}
+		} else if c >= 'A' && c <= 'Z' {
+			if c == 'Z' {
+				chars[i] = 'A'
+				carry = true
+			} else {
+				chars[i] = c + 1
+			}
+		} else if c >= '0' && c <= '9' {
+			if c == '9' {
+				chars[i] = '0'
+				carry = true
+			} else {
+				chars[i] = c + 1
+			}
+		}
+	}
+	if carry {
+		// Determine what to prepend based on the first character type
+		first := chars[0]
+		var prefix byte
+		if first >= 'a' && first <= 'z' {
+			prefix = 'a'
+		} else if first >= 'A' && first <= 'Z' {
+			prefix = 'A'
+		} else {
+			prefix = '1'
+		}
+		chars = append([]byte{prefix}, chars...)
+	}
+
+	return phpv.ZString(chars).ZVal(), nil
+}
+
+// > func string str_decrement ( string $string )
+func fncStrDecrement(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var str phpv.ZString
+	_, err := core.Expand(ctx, args, &str)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(str) == 0 {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "str_decrement(): Argument #1 ($string) must not be empty")
+	}
+
+	// Validate: must be strictly alphanumeric
+	for _, c := range []byte(str) {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, "str_decrement(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters")
+		}
+	}
+
+	// Check for underflow:
+	// - Single character at lowest value (a, A, 0)
+	// - Any string starting with '0' (like "00", "0a", "0A")
+	if len(str) == 1 {
+		c := str[0]
+		if c == 'a' || c == 'A' || c == '0' {
+			return nil, phpobj.ThrowError(ctx, phpobj.ValueError, fmt.Sprintf("str_decrement(): Argument #1 ($string) \"%s\" is out of decrement range", string(str)))
+		}
+	} else if str[0] == '0' {
+		return nil, phpobj.ThrowError(ctx, phpobj.ValueError, fmt.Sprintf("str_decrement(): Argument #1 ($string) \"%s\" is out of decrement range", string(str)))
+	}
+
+	chars := []byte(str)
+	borrow := true
+	for i := len(chars) - 1; i >= 0 && borrow; i-- {
+		c := chars[i]
+		borrow = false
+		if c >= 'a' && c <= 'z' {
+			if c == 'a' {
+				chars[i] = 'z'
+				borrow = true
+			} else {
+				chars[i] = c - 1
+			}
+		} else if c >= 'A' && c <= 'Z' {
+			if c == 'A' {
+				chars[i] = 'Z'
+				borrow = true
+			} else {
+				chars[i] = c - 1
+			}
+		} else if c >= '0' && c <= '9' {
+			if c == '0' {
+				chars[i] = '9'
+				borrow = true
+			} else {
+				chars[i] = c - 1
+			}
+		}
+	}
+
+	// Remove leading character if it underflowed (borrow past the front)
+	if borrow && len(chars) > 1 {
+		chars = chars[1:]
+	}
+
+	// Remove leading '0' if the string now starts with '0' and has more than 1 char
+	// (e.g., "10" -> "09" -> strip to "9")
+	if len(chars) > 1 && chars[0] == '0' {
+		chars = chars[1:]
+	}
+
+	return phpv.ZString(chars).ZVal(), nil
+}

@@ -1,0 +1,3589 @@
+package phpobj
+
+import (
+	"fmt"
+	"io"
+	"strconv"
+	"strings"
+
+	"github.com/KarpelesLab/goro/core/logopt"
+	"github.com/KarpelesLab/goro/core/phperr"
+	"github.com/KarpelesLab/goro/core/phpv"
+)
+
+type ZClass struct {
+	Name phpv.ZString
+	L    *phpv.Loc
+	LEnd *phpv.Loc // end line of the class declaration
+	Type phpv.ZClassType
+	Attr phpv.ZClassAttr
+
+	// string value of extend & implement (used previous to lookup)
+	ExtendsStr    phpv.ZString
+	ImplementsStr []phpv.ZString
+
+	parents         map[*ZClass]*ZClass // all parents, extends & implements
+	Extends         *ZClass
+	Implementations []*ZClass
+	Const           map[phpv.ZString]*phpv.ZClassConst // class constants
+	ConstOrder      []phpv.ZString                     // declaration order for deterministic iteration
+	Props           []*phpv.ZClassProp
+	TraitUses       []phpv.ZClassTraitUse
+	Methods         map[phpv.ZString]*phpv.ZClassMethod
+	MethodOrder     []phpv.ZString // declaration order for deterministic iteration
+	StaticProps     *phpv.ZHashTable
+	Attributes      []*phpv.ZAttribute // PHP 8.0 attributes
+
+	nextIntanceID int
+	constSource   map[phpv.ZString]phpv.ZString // tracks which interface provided each inherited constant
+
+	// class specific handlers
+	H *phpv.ZClassHandlers
+
+	// InternalOnly prevents user classes from implementing/extending this class
+	InternalOnly bool
+
+	// Ext is the extension name for internal classes (e.g. "SPL", "Core", "date")
+	Ext string
+
+	// DocComment is the doc comment (/** ... */) associated with this class
+	DocComment phpv.ZString
+
+	// Enum support (PHP 8.1)
+	EnumBackingType phpv.ZType     // 0 for unit enums, ZtString or ZtInt for backed enums
+	EnumCases       []phpv.ZString // ordered list of case names
+	EnumError       error          // non-nil if enum has a catchable error (e.g. duplicate values)
+}
+
+func (c *ZClass) GetName() phpv.ZString {
+	if c == nil {
+		return ""
+	}
+	// Anonymous classes have internal names like "class@anonymous\x00path:line$0"
+	// GetName() returns the display name (before the null byte)
+	if idx := strings.IndexByte(string(c.Name), 0); idx >= 0 {
+		return c.Name[:idx]
+	}
+	return c.Name
+}
+
+func (c *ZClass) Run(ctx phpv.Context) (*phpv.ZVal, error) {
+	err := ctx.Global().RegisterClass(c.Name, c)
+	if err != nil {
+		// Check if the conflict is with an alias (class_alias) - those produce a Warning, not Fatal
+		type aliasConflictErr interface {
+			IsAliasConflict() bool
+			RedeclareKind() string
+			RedeclarePrevLoc() string
+		}
+		if aliasErr, ok := err.(aliasConflictErr); ok && aliasErr.IsAliasConflict() {
+			// Use the name being declared (c.Name) for the display, not the alias's original name
+			ctx.Warn("Cannot redeclare %s %s%s", aliasErr.RedeclareKind(), c.Name, aliasErr.RedeclarePrevLoc())
+			return nil, nil
+		}
+		return nil, c.fatalError(ctx, err.Error())
+	}
+	err = c.Compile(ctx)
+	if err != nil {
+		// If compilation fails (e.g. parent class not found), unregister the class
+		// so that class_exists() returns false, matching PHP behavior.
+		ctx.Global().UnregisterClass(c.Name)
+		return nil, err
+	}
+	return nil, nil
+}
+
+func (c *ZClass) Compile(ctx phpv.Context) error {
+	// Set compiling class for self:: resolution in constant initializers
+	ctx.Global().SetCompilingClass(c)
+	defer ctx.Global().SetCompilingClass(nil)
+
+	c.parents = make(map[*ZClass]*ZClass)
+
+	if c.ExtendsStr != "" {
+		// need to lookup extend
+		parent, err := ctx.Global().GetClass(ctx, c.ExtendsStr, true)
+		if err != nil {
+			return err
+		}
+		// Check for self-extension (e.g. interface Foo extends Foo)
+		if parent == c {
+			noun := "Class"
+			if c.Type == phpv.ZClassTypeInterface {
+				noun = "Interface"
+			}
+			return ThrowError(ctx, Error, fmt.Sprintf("%s \"%s\" not found", noun, c.ExtendsStr))
+		}
+		if _, found := c.parents[parent.(*ZClass)]; found {
+			return ctx.Errorf("class extends loop found")
+		}
+		c.Extends = parent.(*ZClass)
+		c.parents[parent.(*ZClass)] = parent.(*ZClass)
+		// Add all of parent's parents (transitive)
+		if c.Extends.parents != nil {
+			for k, v := range c.Extends.parents {
+				c.parents[k] = v
+			}
+		}
+
+		// Check if trying to extend an interface (must use implements instead)
+		if c.Type != phpv.ZClassTypeInterface && c.Extends.Type == phpv.ZClassTypeInterface {
+			return c.fatalError(ctx, fmt.Sprintf("Class %s cannot extend interface %s", c.Name, c.Extends.Name))
+		}
+
+		// Check if an interface is trying to extend a non-interface class
+		if c.Type == phpv.ZClassTypeInterface && c.Extends.Type != phpv.ZClassTypeInterface {
+			return c.fatalError(ctx, fmt.Sprintf("%s cannot implement %s - it is not an interface", c.Name, c.Extends.Name))
+		}
+
+		// Check if trying to extend a trait (use "use" instead)
+		if c.Extends.Type == phpv.ZClassTypeTrait {
+			return c.fatalError(ctx, fmt.Sprintf("Class %s cannot extend trait %s", c.Name, c.Extends.Name))
+		}
+
+		// Readonly class inheritance checks
+		if c.Attr.Has(phpv.ZClassReadonly) && !c.Extends.Attr.Has(phpv.ZClassReadonly) {
+			return c.fatalError(ctx, fmt.Sprintf("Readonly class %s cannot extend non-readonly class %s", c.Name, c.Extends.Name))
+		}
+		if !c.Attr.Has(phpv.ZClassReadonly) && c.Extends.Attr.Has(phpv.ZClassReadonly) {
+			return c.fatalError(ctx, fmt.Sprintf("Non-readonly class %s cannot extend readonly class %s", c.Name, c.Extends.Name))
+		}
+
+		// Check if parent class is final or an enum (enums cannot be extended)
+		if c.Extends.Type.Has(phpv.ZClassTypeEnum) {
+			return c.fatalError(ctx, fmt.Sprintf("Class %s cannot extend enum %s", c.Name, c.Extends.Name))
+		}
+		if c.Extends.Attr.Has(phpv.ZClassFinal) {
+			return c.fatalError(ctx, fmt.Sprintf("Class %s cannot extend final class %s", c.Name, c.Extends.Name))
+		}
+
+		// Emit warnings about non-public magic methods BEFORE inheritance checks,
+		// because PHP emits these warnings before checking access level narrowing.
+		c.warnNonPublicMagicMethods(ctx)
+
+		// need to import methods, with validation
+		for n, m := range c.Extends.Methods {
+			if ours, gotit := c.Methods[n]; gotit {
+				// Check final method override (private methods cannot be final for inheritance, except constructors)
+				if m.Modifiers.Has(phpv.ZAttrFinal) && (!m.Modifiers.Has(phpv.ZAttrPrivate) || n == "__construct") {
+					loc := ours.Loc
+					if loc == nil {
+						loc = c.L
+					}
+					return c.fatalErrorAt(ctx, fmt.Sprintf("Cannot override final method %s::%s()", c.Extends.Name, m.Name), loc)
+				}
+
+				// Check access level narrowing (skip for private parent methods)
+				if !m.Modifiers.Has(phpv.ZAttrPrivate) {
+					// Treat implicit public (no modifier) as public
+					parentAccess := m.Modifiers.Access()
+					if parentAccess == 0 || m.Modifiers.Has(phpv.ZAttrImplicitPublic) {
+						parentAccess = phpv.ZAttrPublic
+					}
+					childAccess := ours.Modifiers.Access()
+					if childAccess == 0 || ours.Modifiers.Has(phpv.ZAttrImplicitPublic) {
+						childAccess = phpv.ZAttrPublic
+					}
+					if parentAccess == phpv.ZAttrPublic && childAccess != phpv.ZAttrPublic {
+						loc := ours.Loc
+						if loc == nil {
+							loc = c.L
+						}
+						return c.fatalErrorAt(ctx, fmt.Sprintf("Access level to %s::%s() must be public (as in class %s)", c.Name, ours.Name, c.Extends.Name), loc)
+					}
+					if parentAccess == phpv.ZAttrProtected && childAccess == phpv.ZAttrPrivate {
+						loc := ours.Loc
+						if loc == nil {
+							loc = c.L
+						}
+						return c.fatalErrorAt(ctx, fmt.Sprintf("Access level to %s::%s() must be protected (as in class %s) or weaker", c.Name, ours.Name, c.Extends.Name), loc)
+					}
+
+					// Check method signature compatibility
+					// For constructors, only enforce when parent has abstract constructor
+					if n == "__construct" {
+						if m.Modifiers.Has(phpv.ZAttrAbstract) || m.Empty {
+							if err := c.checkMethodCompatibility(ctx, ours, m); err != nil {
+								return err
+							}
+						}
+					} else {
+						if err := c.checkMethodCompatibility(ctx, ours, m); err != nil {
+							return err
+						}
+					}
+				}
+			} else {
+				c.Methods[n] = m
+			}
+		}
+
+		// Check __construct compatibility against abstract constructors in the ancestor chain
+		// and interface constructor declarations inherited from parents.
+		if ours, gotit := c.Methods["__construct"]; gotit && (ours.Class == nil || ours.Class == c) {
+			for p := c.Extends; p != nil; p = p.Extends {
+				// Check abstract constructors in ancestor classes
+				if pCtor, hasCtor := p.Methods["__construct"]; hasCtor {
+					if pCtor.Modifiers.Has(phpv.ZAttrAbstract) || (pCtor.Empty && pCtor.Class != nil && pCtor.Class.GetType() == phpv.ZClassTypeInterface) {
+						if err := c.checkMethodCompatibility(ctx, ours, pCtor); err != nil {
+							return err
+						}
+					}
+				}
+				// Check interface constructors
+				for _, intf := range p.Implementations {
+					if intfCtor, hasCtor := intf.Methods["__construct"]; hasCtor {
+						if err := c.checkMethodCompatibility(ctx, ours, intfCtor); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+
+		// Inherit constants from parent (skip private ones), preserving order
+		for _, k := range c.Extends.ConstOrder {
+			v := c.Extends.Const[k]
+			if v == nil || v.Modifiers.IsPrivate() {
+				continue
+			}
+			if childConst, exists := c.Const[k]; exists {
+				_ = childConst // used below
+				// Cannot override final constants
+				if v.Modifiers.Has(phpv.ZAttrFinal) {
+					return c.fatalError(ctx, fmt.Sprintf("%s::%s cannot override final constant %s::%s", c.Name, k, c.Extends.Name, k))
+				}
+				// Validate constant visibility is not narrowed
+				parentVis := visibilityLevel(v.Modifiers)
+				childVis := visibilityLevel(childConst.Modifiers)
+				if childVis > parentVis {
+					visName := "public"
+					weaker := ""
+					if v.Modifiers.IsProtected() {
+						visName = "protected"
+						weaker = " or weaker"
+					}
+					return c.fatalError(ctx, fmt.Sprintf("Access level to %s::%s must be %s (as in class %s)%s", c.Name, k, visName, c.Extends.Name, weaker))
+				}
+			} else {
+				// Copy constant from parent, tracking the declaring class.
+				// If v already has a DeclaringClass set, preserve it (it was declared even further up).
+				// Otherwise, the declaring class is the direct parent that holds it.
+				if v.DeclaringClass == nil {
+					// Make a shallow copy so we can set DeclaringClass without modifying the original
+					vCopy := *v
+					vCopy.DeclaringClass = c.Extends
+					c.Const[k] = &vCopy
+				} else {
+					c.Const[k] = v
+				}
+				c.ConstOrder = append(c.ConstOrder, k)
+				// Track that this constant came from the parent class for ambiguity detection
+				if c.constSource == nil {
+					c.constSource = make(map[phpv.ZString]phpv.ZString)
+				}
+				// If parent also tracked a source (inherited from interface), use that
+				if c.Extends.constSource != nil {
+					if src, ok := c.Extends.constSource[k]; ok {
+						c.constSource[k] = src
+					} else {
+						c.constSource[k] = c.Extends.Name
+					}
+				} else {
+					c.constSource[k] = c.Extends.Name
+				}
+			}
+		}
+
+		// Validate property overrides
+		for _, childProp := range c.Props {
+			parentProp, found := c.Extends.GetProp(childProp.VarName)
+			if !found {
+				continue
+			}
+
+			// Private parent properties can be freely redeclared
+			if parentProp.Modifiers.IsPrivate() {
+				continue
+			}
+
+			// Check static/non-static mismatch
+			parentStatic := parentProp.Modifiers.IsStatic()
+			childStatic := childProp.Modifiers.IsStatic()
+			if parentStatic && !childStatic {
+				return c.fatalError(ctx, fmt.Sprintf("Cannot redeclare static %s::$%s as non static %s::$%s", c.Extends.Name, childProp.VarName, c.Name, childProp.VarName))
+			}
+			if !parentStatic && childStatic {
+				return c.fatalError(ctx, fmt.Sprintf("Cannot redeclare non static %s::$%s as static %s::$%s", c.Extends.Name, childProp.VarName, c.Name, childProp.VarName))
+			}
+
+			// Check access level narrowing
+			parentAccess := parentProp.Modifiers.Access()
+			if parentAccess == 0 {
+				parentAccess = phpv.ZAttrPublic
+			}
+			childAccess := childProp.Modifiers.Access()
+			if childAccess == 0 {
+				childAccess = phpv.ZAttrPublic
+			}
+			if parentAccess == phpv.ZAttrPublic && childAccess != phpv.ZAttrPublic {
+				return c.fatalError(ctx, fmt.Sprintf("Access level to %s::$%s must be public (as in class %s)", c.Name, childProp.VarName, c.Extends.Name))
+			}
+			if parentAccess == phpv.ZAttrProtected && childAccess == phpv.ZAttrPrivate {
+				return c.fatalError(ctx, fmt.Sprintf("Access level to %s::$%s must be protected (as in class %s) or weaker", c.Name, childProp.VarName, c.Extends.Name))
+			}
+
+			// Check readonly mismatch.
+			// Exception: abstract hooked properties allow readonly mismatch.
+			parentReadonly := parentProp.Modifiers.IsReadonly()
+			childReadonly := childProp.Modifiers.IsReadonly()
+			parentIsAbstractHooked := parentProp.HasHooks && parentProp.Modifiers.Has(phpv.ZAttrAbstract)
+			if parentReadonly && !childReadonly && !parentIsAbstractHooked {
+				return c.fatalError(ctx, fmt.Sprintf("Cannot redeclare readonly property %s::$%s as non-readonly %s::$%s", c.Extends.Name, childProp.VarName, c.Name, childProp.VarName))
+			}
+			if !parentReadonly && childReadonly && !parentIsAbstractHooked {
+				return c.fatalError(ctx, fmt.Sprintf("Cannot redeclare non-readonly property %s::$%s as readonly %s::$%s", c.Extends.Name, childProp.VarName, c.Name, childProp.VarName))
+			}
+
+			// Cannot override a final property (explicit or implicit via private(set))
+			parentSetAccess := parentProp.SetModifiers & phpv.ZAttrAccess
+			if parentProp.Modifiers.Has(phpv.ZAttrFinal) || parentSetAccess == phpv.ZAttrPrivate {
+				return c.fatalError(ctx, fmt.Sprintf("Cannot override final property %s::$%s", c.Extends.Name, childProp.VarName))
+			}
+
+			// Check property type compatibility.
+			// PHP 8.4: Hooked properties have relaxed variance rules:
+			// - Get-only (virtual, no set): covariant (child type can be narrower)
+			// - Set-only (no get): contravariant (child type can be wider)
+			// - Both get+set or plain: invariant (child type must match parent exactly)
+			if parentProp.TypeHint != nil || childProp.TypeHint != nil {
+				if parentProp.TypeHint == nil && childProp.TypeHint != nil {
+					return c.fatalError(ctx, fmt.Sprintf("Type of %s::$%s must be omitted to match the parent definition in class %s", c.Name, childProp.VarName, c.Extends.Name))
+				}
+				if parentProp.TypeHint != nil && childProp.TypeHint == nil {
+					return c.fatalError(ctx, fmt.Sprintf("Type of %s::$%s must be %s (as in class %s)", c.Name, childProp.VarName, parentProp.TypeHint.String(), c.Extends.Name))
+				}
+				if parentProp.TypeHint != nil && childProp.TypeHint != nil {
+					// Determine variance mode based on hooks
+					parentGetOnly := parentProp.HasHooks && (parentProp.GetHook != nil || parentProp.GetIsAbstract || parentProp.HasGetDeclared) &&
+						parentProp.SetHook == nil && !parentProp.SetIsAbstract && !parentProp.HasSetDeclared && !parentProp.IsBacked
+					parentSetOnly := parentProp.HasHooks && (parentProp.SetHook != nil || parentProp.SetIsAbstract || parentProp.HasSetDeclared) &&
+						parentProp.GetHook == nil && !parentProp.GetIsAbstract && !parentProp.HasGetDeclared
+
+					childGetOnly := childProp.HasHooks && (childProp.GetHook != nil || childProp.GetIsAbstract || childProp.HasGetDeclared) &&
+						childProp.SetHook == nil && !childProp.SetIsAbstract && !childProp.HasSetDeclared && !childProp.IsBacked
+					childSetOnly := childProp.HasHooks && (childProp.SetHook != nil || childProp.SetIsAbstract || childProp.HasSetDeclared) &&
+						childProp.GetHook == nil && !childProp.GetIsAbstract && !childProp.HasGetDeclared
+
+					if parentGetOnly && childGetOnly {
+						// Covariant: child type must be subtype of parent type
+						if !typeHintIsWidening(ctx, parentProp.TypeHint, childProp.TypeHint) {
+							return c.fatalError(ctx, fmt.Sprintf("Declaration of %s::$%s::get(): %s must be compatible with %s::$%s::get(): %s",
+								c.Name, childProp.VarName, childProp.TypeHint.String(),
+								c.Extends.Name, parentProp.VarName, parentProp.TypeHint.String()))
+						}
+					} else if parentSetOnly && childSetOnly {
+						// Contravariant: child type must be supertype of parent type
+						if !typeHintIsWidening(ctx, childProp.TypeHint, parentProp.TypeHint) {
+							return c.fatalError(ctx, fmt.Sprintf("Declaration of %s::$%s::set(%s $value): void must be compatible with %s::$%s::set(%s $value): void",
+								c.Name, childProp.VarName, childProp.TypeHint.String(),
+								c.Extends.Name, parentProp.VarName, parentProp.TypeHint.String()))
+						}
+					} else if parentSetOnly && !childSetOnly && childProp.HasHooks && (childProp.HasGetDeclared || childProp.GetHook != nil) {
+						// Child adds get to set-only parent: set part must be contravariant
+						if !typeHintIsWidening(ctx, childProp.TypeHint, parentProp.TypeHint) {
+							return c.fatalError(ctx, fmt.Sprintf("Type of %s::$%s must be %s (as in class %s)", c.Name, childProp.VarName, parentProp.TypeHint.String(), c.Extends.Name))
+						}
+					} else if parentGetOnly && !childGetOnly && childProp.HasHooks && (childProp.HasSetDeclared || childProp.SetHook != nil) {
+						// Child adds set to get-only parent: get part must be covariant
+						if !typeHintIsWidening(ctx, parentProp.TypeHint, childProp.TypeHint) {
+							return c.fatalError(ctx, fmt.Sprintf("Type of %s::$%s must be %s (as in class %s)", c.Name, childProp.VarName, parentProp.TypeHint.String(), c.Extends.Name))
+						}
+					} else {
+						// Invariant: child type must match parent type exactly
+						if !typeHintIsWidening(ctx, childProp.TypeHint, parentProp.TypeHint) ||
+							!typeHintIsWidening(ctx, parentProp.TypeHint, childProp.TypeHint) {
+							return c.fatalError(ctx, fmt.Sprintf("Type of %s::$%s must be %s (as in class %s)", c.Name, childProp.VarName, parentProp.TypeHint.String(), c.Extends.Name))
+						}
+					}
+				}
+			}
+
+			// PHP 8.4: Inherit un-overridden hooks from parent
+			if childProp.HasHooks && parentProp.HasHooks {
+				if childProp.GetHook == nil && parentProp.GetHook != nil {
+					childProp.GetHook = parentProp.GetHook
+				}
+				if childProp.SetHook == nil && parentProp.SetHook != nil {
+					childProp.SetHook = parentProp.SetHook
+				}
+				// Recompute IsBacked flag after inheritance
+				if parentProp.IsBacked {
+					childProp.IsBacked = true
+				}
+			}
+
+			// Check asymmetric set visibility override compatibility
+			childSetAccess := childProp.SetModifiers & phpv.ZAttrAccess
+
+			if parentSetAccess != 0 || childSetAccess != 0 {
+				// Parent has no explicit set modifier — child cannot add one
+				// (adding a set restriction narrows access)
+				// Exception: if the parent property is a get-only property (virtual or abstract)
+				// with no set semantics, the child may add set visibility when adding set capability.
+				parentHasGet := parentProp.HasHooks && (parentProp.GetHook != nil || parentProp.GetIsAbstract || parentProp.HasGetDeclared)
+				parentHasSet := parentProp.SetHook != nil || parentProp.SetIsAbstract || parentProp.HasSetDeclared
+				parentIsGetOnly := parentHasGet && !parentHasSet && parentProp.Default == nil
+				if parentSetAccess == 0 && childSetAccess != 0 && !parentIsGetOnly {
+					return c.fatalError(ctx, fmt.Sprintf("Set access level of %s::$%s must be omitted (as in class %s)", c.Name, childProp.VarName, c.Extends.Name))
+				}
+				// Parent has set modifier, child doesn't — OK (widening)
+				// Both have set modifiers — child must not be narrower
+				if parentSetAccess != 0 && childSetAccess != 0 {
+					parentSetLevel := visibilityLevel(parentSetAccess)
+					childSetLevel := visibilityLevel(childSetAccess)
+					if childSetLevel > parentSetLevel {
+						setName := "protected(set)"
+						if parentSetAccess == phpv.ZAttrPublic {
+							setName = "omitted"
+						}
+						return c.fatalError(ctx, fmt.Sprintf("Set access level of %s::$%s must be %s (as in class %s) or weaker", c.Name, childProp.VarName, setName, c.Extends.Name))
+					}
+				}
+			}
+		}
+	}
+	// Interfaces cannot use traits
+	if c.Type == phpv.ZClassTypeInterface && len(c.TraitUses) > 0 {
+		traitName := c.TraitUses[0].TraitNames[0]
+		return c.fatalError(ctx, fmt.Sprintf("Cannot use traits inside of interfaces. %s is used in %s", traitName, c.Name))
+	}
+
+	// Resolve trait uses: import methods and properties from traits
+	// Track which trait provided each property (across all use statements) for conflict reporting
+	type propSourceInfo struct {
+		traitName phpv.ZString
+	}
+	propSources := make(map[phpv.ZString]*propSourceInfo)
+	// Track which trait provided each constant (across all use statements) for conflict reporting
+	constTraitSources := make(map[phpv.ZString]phpv.ZString)
+	// Track which methods have been excluded (for duplicate exclusion detection)
+	globalExcluded := make(map[phpv.ZString]map[phpv.ZString]bool) // method -> set of excluded trait names
+
+	for _, tu := range c.TraitUses {
+		// Build insteadof exclusion map
+		type excludeKey struct {
+			method    phpv.ZString
+			traitName phpv.ZString
+		}
+		excluded := make(map[excludeKey]bool)
+
+		// Build map of resolved trait names for validation
+		resolvedTraitNames := make(map[phpv.ZString]bool)
+		for _, tn := range tu.TraitNames {
+			resolvedTraitNames[tn.ToLower()] = true
+		}
+
+		for _, io := range tu.Insteadof {
+			methodLower := io.MethodName.ToLower()
+			// Check reserved names in insteadof references
+			switch io.TraitName.ToLower() {
+			case "self", "parent", "static":
+				return c.fatalError(ctx, fmt.Sprintf("Cannot use \"%s\" as trait name, as it is reserved", io.TraitName))
+			}
+			// Check that the insteadof source trait is in the use list
+			if !resolvedTraitNames[io.TraitName.ToLower()] {
+				// Try to resolve the class to give a better error message
+				otherClass, lookupErr := ctx.Global().GetClass(ctx, io.TraitName, false)
+				if lookupErr != nil || otherClass == nil {
+					return c.fatalError(ctx, fmt.Sprintf("Could not find trait %s", io.TraitName))
+				}
+				oc := otherClass.(*ZClass)
+				if oc.Type != phpv.ZClassTypeTrait {
+					return c.fatalError(ctx, fmt.Sprintf("Class %s is not a trait, Only traits may be used in 'as' and 'insteadof' statements", io.TraitName))
+				}
+				return c.fatalError(ctx, fmt.Sprintf("Required Trait %s wasn't added to %s", io.TraitName, c.Name))
+			}
+			for _, excTrait := range io.InsteadOf {
+				// Check reserved names
+				switch excTrait.ToLower() {
+				case "self", "parent", "static":
+					return c.fatalError(ctx, fmt.Sprintf("Cannot use \"%s\" as trait name, as it is reserved", excTrait))
+				}
+				// Validate: the excluded trait must be in the use list
+				if !resolvedTraitNames[excTrait.ToLower()] {
+					otherClass, lookupErr := ctx.Global().GetClass(ctx, excTrait, false)
+					if lookupErr != nil || otherClass == nil {
+						return c.fatalError(ctx, fmt.Sprintf("Could not find trait %s", excTrait))
+					}
+					oc := otherClass.(*ZClass)
+					if oc.Type != phpv.ZClassTypeTrait {
+						return c.fatalError(ctx, fmt.Sprintf("Class %s is not a trait, Only traits may be used in 'as' and 'insteadof' statements", excTrait))
+					}
+					return c.fatalError(ctx, fmt.Sprintf("Required Trait %s wasn't added to %s", excTrait, c.Name))
+				}
+				// Validate: cannot exclude the same trait that provides the method (inconsistent)
+				if excTrait.ToLower() == io.TraitName.ToLower() {
+					return c.fatalError(ctx, fmt.Sprintf("Inconsistent insteadof definition. The method %s is to be used from %s, but %s is also on the exclude list", io.MethodName, io.TraitName, io.TraitName))
+				}
+				// Check for duplicate exclusions across all use statements
+				if globalExcluded[methodLower] == nil {
+					globalExcluded[methodLower] = make(map[phpv.ZString]bool)
+				}
+				if globalExcluded[methodLower][excTrait.ToLower()] {
+					return c.fatalError(ctx, fmt.Sprintf("Failed to evaluate a trait precedence (%s). Method of trait %s was defined to be excluded multiple times", io.MethodName, excTrait))
+				}
+				globalExcluded[methodLower][excTrait.ToLower()] = true
+				excluded[excludeKey{methodLower, excTrait.ToLower()}] = true
+			}
+		}
+
+		// Track which trait provided each method for conflict detection
+		type methodSource struct {
+			traitName phpv.ZString
+			method    *phpv.ZClassMethod
+		}
+		traitMethods := make(map[phpv.ZString]*methodSource)
+
+		var resolvedTraits []*ZClass
+		for _, traitName := range tu.TraitNames {
+			// Check reserved names
+			switch traitName.ToLower() {
+			case "self", "parent", "static":
+				return c.fatalError(ctx, fmt.Sprintf("Cannot use \"%s\" as trait name, as it is reserved", traitName))
+			}
+			traitClass, err := ctx.Global().GetClass(ctx, traitName, true)
+			if err != nil {
+				return ThrowError(ctx, Error, fmt.Sprintf("Trait \"%s\" not found", traitName))
+			}
+			tc := traitClass.(*ZClass)
+			if tc.Type != phpv.ZClassTypeTrait {
+				return ThrowError(ctx, Error, fmt.Sprintf("%s cannot use %s - it is not a trait", c.Name, tc.Name))
+			}
+			resolvedTraits = append(resolvedTraits, tc)
+		}
+
+		// Validate insteadof references: check that the method actually exists in the source trait
+		for _, io := range tu.Insteadof {
+			srcLower := io.TraitName.ToLower()
+			methodLower := io.MethodName.ToLower()
+			found := false
+			for _, tc := range resolvedTraits {
+				if tc.Name.ToLower() == srcLower {
+					if _, ok := tc.Methods[methodLower]; ok {
+						found = true
+					}
+					break
+				}
+			}
+			if !found {
+				return c.fatalError(ctx, fmt.Sprintf("A precedence rule was defined for %s::%s but this method does not exist", io.TraitName, io.MethodName))
+			}
+		}
+
+		for _, tc := range resolvedTraits {
+			for name, m := range tc.Methods {
+				if excluded[excludeKey{name, tc.Name.ToLower()}] {
+					continue
+				}
+				if src, exists := traitMethods[name]; exists {
+					// Both abstract: OK, skip
+					if m.Empty && m.Modifiers.Has(phpv.ZAttrAbstract) && src.method.Empty && src.method.Modifiers.Has(phpv.ZAttrAbstract) {
+						continue
+					}
+					// One abstract, one concrete: the concrete one wins (no conflict)
+					if m.Empty && m.Modifiers.Has(phpv.ZAttrAbstract) && !src.method.Empty {
+						// Current method is abstract, existing is concrete - existing wins, skip
+						continue
+					}
+					if !m.Empty && src.method.Empty && src.method.Modifiers.Has(phpv.ZAttrAbstract) {
+						// Current method is concrete, existing is abstract - replace
+						traitMethods[name] = &methodSource{traitName: tc.Name, method: m}
+						methodCopy := &phpv.ZClassMethod{
+							Name:       m.Name,
+							Modifiers:  m.Modifiers,
+							Method:     m.Method,
+							Class:      c,
+							Empty:      m.Empty,
+							Loc:        m.Loc,
+							Attributes: m.Attributes,
+							FromTrait:  tc,
+						}
+						c.Methods[name] = methodCopy
+						if name == "__construct" {
+							c.Handlers().Constructor = methodCopy
+						}
+						continue
+					}
+					// Both concrete from different traits but same underlying method body
+					// (e.g., both inherited from the same base trait through diamond): no conflict
+					if src.method.Method == m.Method {
+						continue
+					}
+					return c.fatalError(ctx, fmt.Sprintf("Trait method %s::%s has not been applied as %s::%s, because of collision with %s::%s",
+						tc.Name, m.Name, c.Name, m.Name, src.traitName, m.Name))
+				}
+				traitMethods[name] = &methodSource{traitName: tc.Name, method: m}
+
+				existing, existsInClass := c.Methods[name]
+				// If existing method is abstract (from a previous trait or class body) and
+				// current trait method is concrete, the concrete method should replace it
+				if existsInClass && existing.Empty && (existing.Modifiers.Has(phpv.ZAttrAbstract) || (existing.Class != nil && existing.Class.GetType() == phpv.ZClassTypeInterface)) && !m.Empty {
+					// Check compatibility first
+					traitMethod := &phpv.ZClassMethod{
+						Name:      m.Name,
+						Modifiers: m.Modifiers,
+						Method:    m.Method,
+						Class:     c,
+						Empty:     m.Empty,
+						Loc:       m.Loc,
+					}
+					abstractMethod := existing
+					if abstractMethod.FromTrait != nil {
+						abstractMethod = &phpv.ZClassMethod{
+							Name:      existing.Name,
+							Modifiers: existing.Modifiers,
+							Method:    existing.Method,
+							Class:     existing.FromTrait,
+							Empty:     existing.Empty,
+							Loc:       existing.Loc,
+						}
+					}
+					if err := c.checkMethodCompatibility(ctx, traitMethod, abstractMethod); err != nil {
+						return err
+					}
+					// Replace the abstract method with the concrete one
+					methodCopy := &phpv.ZClassMethod{
+						Name:       m.Name,
+						Modifiers:  m.Modifiers,
+						Method:     m.Method,
+						Class:      c,
+						Empty:      m.Empty,
+						Loc:        m.Loc,
+						Attributes: m.Attributes,
+						FromTrait:  tc,
+					}
+					c.Methods[name] = methodCopy
+					if name == "__construct" {
+						c.Handlers().Constructor = methodCopy
+					}
+					continue
+				}
+				if existsInClass && existing.Class == c && !existing.Empty && existing.FromTrait == nil {
+					// Class has its own concrete implementation (not from a trait).
+					// If trait method is abstract, check compatibility.
+					if m.Empty && m.Modifiers.Has(phpv.ZAttrAbstract) {
+						// Create a temporary method ref with trait's class for error message
+						traitMethod := &phpv.ZClassMethod{
+							Name:      m.Name,
+							Modifiers: m.Modifiers,
+							Method:    m.Method,
+							Class:     tc,
+							Empty:     m.Empty,
+							Loc:       m.Loc,
+							FromTrait: tc,
+						}
+						if err := c.checkMethodCompatibility(ctx, existing, traitMethod); err != nil {
+							return err
+						}
+					}
+					// Also check static/non-static mismatch for abstract trait methods
+					if m.Empty && m.Modifiers.Has(phpv.ZAttrAbstract) {
+						if m.Modifiers.Has(phpv.ZAttrStatic) && !existing.Modifiers.Has(phpv.ZAttrStatic) {
+							return c.fatalError(ctx, fmt.Sprintf("Cannot make static method %s::%s() non static in class %s", tc.Name, m.Name, c.Name))
+						}
+						if !m.Modifiers.Has(phpv.ZAttrStatic) && existing.Modifiers.Has(phpv.ZAttrStatic) {
+							return c.fatalError(ctx, fmt.Sprintf("Cannot make non static method %s::%s() static in class %s", tc.Name, m.Name, c.Name))
+						}
+					}
+					// Keep class's own method, don't import trait method
+				} else if existsInClass && existing.FromTrait != nil && !existing.Empty && !m.Empty {
+					// Cross-use-statement conflict: the method was imported from a different trait
+					// in a previous "use" statement and is concrete, and the current method is also concrete.
+					// Both abstract: OK
+					if m.Modifiers.Has(phpv.ZAttrAbstract) && existing.Modifiers.Has(phpv.ZAttrAbstract) {
+						// both abstract, skip
+					} else if m.Modifiers.Has(phpv.ZAttrAbstract) && !existing.Modifiers.Has(phpv.ZAttrAbstract) {
+						// current is abstract, existing is concrete - keep existing
+					} else if !m.Modifiers.Has(phpv.ZAttrAbstract) && existing.Modifiers.Has(phpv.ZAttrAbstract) {
+						// current is concrete, existing is abstract - replace
+						methodCopy := &phpv.ZClassMethod{
+							Name:       m.Name,
+							Modifiers:  m.Modifiers,
+							Method:     m.Method,
+							Class:      c,
+							Empty:      m.Empty,
+							Loc:        m.Loc,
+							Attributes: m.Attributes,
+							FromTrait:  tc,
+						}
+						c.Methods[name] = methodCopy
+						if name == "__construct" {
+							c.Handlers().Constructor = methodCopy
+						}
+					} else if existing.Method == m.Method {
+						// Same underlying method (diamond inheritance through traits) - no conflict
+						// But if the trait version has different modifiers (e.g., wider visibility),
+						// update the method to use the trait's version
+						if existing.Modifiers != m.Modifiers || existing.Class != c {
+							methodCopy := &phpv.ZClassMethod{
+								Name:       m.Name,
+								Modifiers:  m.Modifiers,
+								Method:     m.Method,
+								Class:      c,
+								Empty:      m.Empty,
+								Loc:        m.Loc,
+								Attributes: m.Attributes,
+								FromTrait:  tc,
+							}
+							c.Methods[name] = methodCopy
+							if name == "__construct" {
+								c.Handlers().Constructor = methodCopy
+							}
+						}
+					} else {
+						return c.fatalError(ctx, fmt.Sprintf("Trait method %s::%s has not been applied as %s::%s, because of collision with %s::%s",
+							tc.Name, m.Name, c.Name, m.Name, existing.FromTrait.GetName(), m.Name))
+					}
+				} else if !existsInClass || (existing.Class != nil && existing.Class != c && !(m.Empty && m.Modifiers.Has(phpv.ZAttrAbstract) && !existing.Empty)) {
+					// Check if the inherited method is final (cannot be overridden by trait)
+					if existsInClass && existing.Modifiers.Has(phpv.ZAttrFinal) && !m.Empty {
+						if existing.Class != nil {
+							return c.fatalError(ctx, fmt.Sprintf("Cannot override final method %s::%s()", existing.Class.GetName(), existing.Name))
+						}
+					}
+					// If the trait method replaces an inherited abstract method, check compatibility
+					if existsInClass && !m.Empty && existing.Empty && (existing.Modifiers.Has(phpv.ZAttrAbstract) || (existing.Class != nil && existing.Class.GetType() == phpv.ZClassTypeInterface)) {
+						// Check static/non-static compatibility
+						if existing.Modifiers.Has(phpv.ZAttrStatic) && !m.Modifiers.Has(phpv.ZAttrStatic) {
+							return c.fatalError(ctx, fmt.Sprintf("Cannot make static method %s::%s() non static in class %s", existing.Class.GetName(), existing.Name, c.Name))
+						}
+						if !existing.Modifiers.Has(phpv.ZAttrStatic) && m.Modifiers.Has(phpv.ZAttrStatic) {
+							return c.fatalError(ctx, fmt.Sprintf("Cannot make non static method %s::%s() static in class %s", existing.Class.GetName(), existing.Name, c.Name))
+						}
+						// Check method signature compatibility
+						traitMethod := &phpv.ZClassMethod{
+							Name:      m.Name,
+							Modifiers: m.Modifiers,
+							Method:    m.Method,
+							Class:     c,
+							Empty:     m.Empty,
+							Loc:       m.Loc,
+						}
+						if err := c.checkMethodCompatibility(ctx, traitMethod, existing); err != nil {
+							return err
+						}
+					}
+					methodCopy := &phpv.ZClassMethod{
+						Name:       m.Name,
+						Modifiers:  m.Modifiers,
+						Method:     m.Method,
+						Class:      c,
+						Empty:      m.Empty,
+						Loc:        m.Loc,
+						Attributes: m.Attributes,
+						FromTrait:  tc,
+					}
+					c.Methods[name] = methodCopy
+					if name == "__construct" {
+						c.Handlers().Constructor = methodCopy
+					}
+				}
+			}
+
+			for _, tp := range tc.Props {
+				found := false
+				for _, cp := range c.Props {
+					if cp.VarName == tp.VarName {
+						found = true
+						// Check for property conflict: different visibility, static, or readonly mismatch
+						incompatible := false
+						if cp.Modifiers&phpv.ZAttrAccess != tp.Modifiers&phpv.ZAttrAccess {
+							incompatible = true
+						}
+						if cp.Modifiers&phpv.ZAttrStatic != tp.Modifiers&phpv.ZAttrStatic {
+							incompatible = true
+						}
+						if cp.Modifiers&phpv.ZAttrReadonly != tp.Modifiers&phpv.ZAttrReadonly {
+							incompatible = true
+						}
+						// Check default value compatibility
+						if !incompatible {
+							incompatible = !arePropertyDefaultsCompatible(ctx, cp.Default, tp.Default)
+						}
+						if incompatible {
+							// Use the trait name that originally provided the property, not "c.Name"
+							firstProvider := c.Name
+							if src, ok := propSources[cp.VarName]; ok {
+								firstProvider = src.traitName
+							}
+							return c.fatalError(ctx, fmt.Sprintf("%s and %s define the same property ($%s) in the composition of %s. However, the definition differs and is considered incompatible. Class was composed", firstProvider, tc.Name, tp.VarName, c.Name))
+						}
+						// Check for hooked property conflicts - both have hooks, conflict resolution not supported
+						if cp.HasHooks && tp.HasHooks {
+							firstProvider := c.Name
+							if src, ok := propSources[cp.VarName]; ok {
+								firstProvider = src.traitName
+							}
+							return c.fatalError(ctx, fmt.Sprintf("%s and %s define the same hooked property ($%s) in the composition of %s. Conflict resolution between hooked properties is currently not supported. Class was composed", firstProvider, tc.Name, tp.VarName, c.Name))
+						}
+						break
+					}
+				}
+				if !found {
+					// Copy the trait property so each using class has its own instance.
+					// This is necessary because CompileDelayed defaults are resolved
+					// in-place, and shared trait properties would otherwise resolve
+					// __CLASS__ once and cache the wrong value for subsequent classes.
+					propCopy := *tp
+					c.Props = append(c.Props, &propCopy)
+					propSources[tp.VarName] = &propSourceInfo{traitName: tc.Name}
+				}
+			}
+
+			for _, k := range tc.ConstOrder {
+				if v := tc.Const[k]; v != nil {
+					if existing, exists := c.Const[k]; !exists {
+						c.Const[k] = v
+						c.ConstOrder = append(c.ConstOrder, k)
+						constTraitSources[k] = tc.Name
+					} else {
+						// Check for constant conflicts: different value, visibility, or finality
+						incompatible := false
+						if existing.Modifiers&phpv.ZAttrAccess != v.Modifiers&phpv.ZAttrAccess {
+							incompatible = true // different visibility
+						} else if existing.Modifiers&phpv.ZAttrFinal != v.Modifiers&phpv.ZAttrFinal {
+							incompatible = true // different finality
+						} else if existing.Value != nil && v.Value != nil {
+							// Resolve CompileDelayed values before comparison
+							existingVal := existing.Value
+							if cd, ok := existingVal.(*phpv.CompileDelayed); ok {
+								if z, err := cd.Run(ctx); err == nil {
+									existingVal = z.Value()
+								}
+							}
+							traitVal := v.Value
+							if cd, ok := traitVal.(*phpv.CompileDelayed); ok {
+								if z, err := cd.Run(ctx); err == nil {
+									traitVal = z.Value()
+								}
+							}
+							ev := fmt.Sprintf("%v", existingVal)
+							tv := fmt.Sprintf("%v", traitVal)
+							if ev != tv {
+								incompatible = true
+							}
+						}
+						if incompatible {
+							// Use the trait name that originally provided the constant, not "c.Name"
+							firstProvider := c.Name
+							if src, ok := constTraitSources[k]; ok {
+								firstProvider = src
+							}
+							return c.fatalError(ctx, fmt.Sprintf("%s and %s define the same constant (%s) in the composition of %s. However, the definition differs and is considered incompatible. Class was composed", firstProvider, tc.Name, k, c.Name))
+						}
+					}
+				}
+			}
+		}
+
+		// Build set of all trait method names for alias validation
+		allTraitMethodNames := make(map[phpv.ZString]bool)
+		for _, tc := range resolvedTraits {
+			for name := range tc.Methods {
+				allTraitMethodNames[name] = true
+			}
+		}
+
+		// Apply aliases
+		for _, alias := range tu.Aliases {
+			// Validate: the alias references a trait in the use list if a trait name is specified
+			if alias.TraitName != "" {
+				traitNameLower := alias.TraitName.ToLower()
+				found := false
+				for _, tc := range resolvedTraits {
+					if tc.Name.ToLower() == traitNameLower {
+						found = true
+						break
+					}
+				}
+				if !found {
+					// Try to resolve the class to give a better error message
+					otherClass, lookupErr := ctx.Global().GetClass(ctx, alias.TraitName, false)
+					if lookupErr != nil || otherClass == nil {
+						return c.fatalError(ctx, fmt.Sprintf("Could not find trait %s", alias.TraitName))
+					}
+					oc := otherClass.(*ZClass)
+					if oc.Type != phpv.ZClassTypeTrait {
+						return c.fatalError(ctx, fmt.Sprintf("Class %s is not a trait, Only traits may be used in 'as' and 'insteadof' statements", alias.TraitName))
+					}
+					return c.fatalError(ctx, fmt.Sprintf("Required Trait %s wasn't added to %s", alias.TraitName, c.Name))
+				}
+			}
+
+			if alias.NewName != "" {
+				// Find the method to alias
+				srcName := alias.MethodName.ToLower()
+
+				// Validate method exists in one of the used traits
+				if alias.TraitName != "" {
+					// Look specifically in the named trait
+					traitNameLower := alias.TraitName.ToLower()
+					foundInTrait := false
+					for _, tc := range resolvedTraits {
+						if tc.Name.ToLower() == traitNameLower {
+							if _, ok := tc.Methods[srcName]; ok {
+								foundInTrait = true
+							}
+							break
+						}
+					}
+					if !foundInTrait {
+						return c.fatalError(ctx, fmt.Sprintf("An alias was defined for %s::%s but this method does not exist", alias.TraitName, alias.MethodName))
+					}
+				} else {
+					// No trait specified - method must exist in at least one trait
+					if !allTraitMethodNames[srcName] {
+						return c.fatalError(ctx, fmt.Sprintf("An alias (%s) was defined for method %s(), but this method does not exist", alias.NewName, alias.MethodName))
+					}
+				}
+
+				// Check for ambiguity: method exists in multiple traits without resolution
+				if alias.TraitName == "" {
+					// Count how many traits have this method
+					conflictTraits := []phpv.ZString{}
+					for _, tc := range resolvedTraits {
+						if _, ok := tc.Methods[srcName]; ok {
+							conflictTraits = append(conflictTraits, tc.Name)
+						}
+					}
+					if len(conflictTraits) > 1 {
+						return c.fatalError(ctx, fmt.Sprintf("An alias was defined for method %s(), which exists in both %s and %s. Use %s::%s or %s::%s to resolve the ambiguity",
+							alias.MethodName, conflictTraits[0], conflictTraits[1], conflictTraits[0], alias.MethodName, conflictTraits[1], alias.MethodName))
+					}
+				}
+
+				// Look up the method from the trait directly (not from c.Methods which may be the class's own method)
+				var m *phpv.ZClassMethod
+				if alias.TraitName != "" {
+					traitNameLower := alias.TraitName.ToLower()
+					for _, tc := range resolvedTraits {
+						if tc.Name.ToLower() == traitNameLower {
+							if tm, ok := tc.Methods[srcName]; ok {
+								m = tm
+							}
+							break
+						}
+					}
+				} else {
+					// No trait specified - find the method from the first trait that has it
+					for _, tc := range resolvedTraits {
+						if tm, ok := tc.Methods[srcName]; ok {
+							m = tm
+							break
+						}
+					}
+				}
+
+				// Fall back to c.Methods if trait didn't have it (shouldn't happen after validation)
+				if m == nil {
+					m = c.Methods[srcName]
+				}
+
+				if m != nil {
+					// Determine source trait for the aliased method
+					aliasTrait := m.FromTrait
+					if aliasTrait == nil && m.Class != nil && m.Class != c {
+						aliasTrait = m.Class
+					}
+					// For trait methods, determine the trait from resolvedTraits
+					if aliasTrait == nil {
+						if alias.TraitName != "" {
+							for _, tc := range resolvedTraits {
+								if tc.Name.ToLower() == alias.TraitName.ToLower() {
+									aliasTrait = tc
+									break
+								}
+							}
+						} else {
+							for _, tc := range resolvedTraits {
+								if _, ok := tc.Methods[srcName]; ok {
+									aliasTrait = tc
+									break
+								}
+							}
+						}
+					}
+					newMethod := &phpv.ZClassMethod{
+						Name:      alias.NewName,
+						Modifiers: m.Modifiers,
+						Method:    m.Method,
+						Class:     c,
+						Empty:     m.Empty,
+						Loc:       m.Loc,
+						FromTrait: aliasTrait,
+					}
+					if alias.NewAttr != 0 {
+						if alias.NewAttr == phpv.ZAttrFinal {
+							// Add final modifier
+							newMethod.Modifiers = newMethod.Modifiers | phpv.ZAttrFinal
+						} else {
+							// Replace access modifiers
+							newMethod.Modifiers = (newMethod.Modifiers &^ phpv.ZAttrAccess) | alias.NewAttr
+						}
+					}
+					// Check if the alias name conflicts with an existing trait method from a different trait
+					aliasLower := alias.NewName.ToLower()
+					if existing, exists := c.Methods[aliasLower]; exists && existing.FromTrait != nil {
+						// Determine source trait of the aliased method
+						srcTraitName := phpv.ZString("")
+						if newMethod.FromTrait != nil {
+							srcTraitName = newMethod.FromTrait.GetName()
+						} else if alias.TraitName != "" {
+							srcTraitName = alias.TraitName
+						}
+						existingTraitName := existing.FromTrait.GetName()
+						if srcTraitName != existingTraitName {
+							return c.fatalError(ctx, fmt.Sprintf("Trait method %s::%s has not been applied as %s::%s, because of collision with %s::%s",
+								existingTraitName, existing.Name, c.Name, alias.NewName, srcTraitName, alias.NewName))
+						}
+					}
+					c.Methods[aliasLower] = newMethod
+				}
+			} else if alias.NewAttr != 0 {
+				// Visibility change only (no rename)
+				srcName := alias.MethodName.ToLower()
+
+				// Validate method exists in one of the used traits
+				if alias.TraitName != "" {
+					traitNameLower := alias.TraitName.ToLower()
+					foundInTrait := false
+					for _, tc := range resolvedTraits {
+						if tc.Name.ToLower() == traitNameLower {
+							if _, ok := tc.Methods[srcName]; ok {
+								foundInTrait = true
+							}
+							break
+						}
+					}
+					if !foundInTrait {
+						return c.fatalError(ctx, fmt.Sprintf("The modifiers of the trait method %s() are changed, but this method does not exist. Error", alias.MethodName))
+					}
+				} else {
+					if !allTraitMethodNames[srcName] {
+						return c.fatalError(ctx, fmt.Sprintf("The modifiers of the trait method %s() are changed, but this method does not exist. Error", alias.MethodName))
+					}
+				}
+
+				if m, ok := c.Methods[srcName]; ok {
+					// Don't change the original method's modifiers directly if it was from a trait -
+					// create a copy so aliasing doesn't affect the original trait method
+					var newMods phpv.ZObjectAttr
+					if alias.NewAttr == phpv.ZAttrFinal {
+						newMods = m.Modifiers | phpv.ZAttrFinal
+					} else {
+						newMods = (m.Modifiers &^ phpv.ZAttrAccess) | alias.NewAttr
+					}
+					methodCopy := &phpv.ZClassMethod{
+						Name:       m.Name,
+						Modifiers:  newMods,
+						Method:     m.Method,
+						Class:      c,
+						Empty:      m.Empty,
+						Loc:        m.Loc,
+						Attributes: m.Attributes,
+					}
+					c.Methods[srcName] = methodCopy
+				}
+			}
+		}
+
+		// Validate insteadof references: check that referenced traits are actually in the use list
+		// and that they are not regular classes
+		for _, io := range tu.Insteadof {
+			for _, excTrait := range io.InsteadOf {
+				// Check if it's a class (not a trait) - give specific error
+				otherClass, err := ctx.Global().GetClass(ctx, excTrait, false)
+				if err == nil && otherClass != nil {
+					oc := otherClass.(*ZClass)
+					if oc.Type != phpv.ZClassTypeTrait {
+						return c.fatalError(ctx, fmt.Sprintf("Class %s is not a trait, Only traits may be used in 'as' and 'insteadof' statements", excTrait))
+					}
+				}
+			}
+		}
+	}
+
+	// Readonly class: validate that all trait-imported properties are readonly
+	if c.Attr.Has(phpv.ZClassReadonly) {
+		for _, prop := range c.Props {
+			if propSources[prop.VarName] != nil && !prop.Modifiers.IsReadonly() {
+				src := propSources[prop.VarName]
+				return c.fatalError(ctx, fmt.Sprintf("Readonly class %s cannot use trait with a non-readonly property %s::$%s", c.Name, src.traitName, prop.VarName))
+			}
+		}
+	}
+
+	// Track interfaces seen in THIS declaration's implements/extends list
+	// to detect duplicates (including aliases that resolve to the same interface).
+	// Note: we do NOT include interfaces from the parent class - PHP allows
+	// re-implementing an interface that a parent class already implements.
+	seenInterfaces := make(map[*ZClass]bool)
+	// For interfaces with multiple extends (interface c extends a, b),
+	// the first extended interface is c.Extends and the rest are in ImplementsStr.
+	// Seed seenInterfaces with the first extended interface.
+	if c.Type == phpv.ZClassTypeInterface && c.Extends != nil {
+		seenInterfaces[c.Extends] = true
+	}
+
+	for _, impl := range c.ImplementsStr {
+		intf, err := ctx.Global().GetClass(ctx, impl, true)
+		if err != nil {
+			// Replace "Class" with "Interface" in the error message
+			return ThrowError(ctx, Error, fmt.Sprintf("Interface \"%s\" not found", impl))
+		}
+		intfClass := intf.(*ZClass)
+		// Check that we're implementing/extending an interface, not a regular class
+		if intfClass.Type != phpv.ZClassTypeInterface {
+			return c.fatalError(ctx, fmt.Sprintf("%s cannot implement %s - it is not an interface", c.Name, intfClass.Name))
+		}
+		// Check for duplicate interface implementation (including aliases that resolve to the same interface)
+		if seenInterfaces[intfClass] {
+			if c.Type == phpv.ZClassTypeInterface {
+				return c.fatalError(ctx, fmt.Sprintf("Interface %s cannot implement previously implemented interface %s", c.GetName(), intfClass.GetName()))
+			}
+			return c.fatalError(ctx, fmt.Sprintf("Class %s cannot implement previously implemented interface %s", c.GetName(), intfClass.GetName()))
+		}
+		seenInterfaces[intfClass] = true
+		// Check if this is an internal-only interface that user classes can't implement
+		if intfClass.InternalOnly && c.L != nil {
+			return c.fatalError(ctx, fmt.Sprintf("%s can't be implemented by user classes", intfClass.Name))
+		}
+		// Throwable can only be implemented by extending Exception or Error
+		if intfClass == Throwable && c.L != nil {
+			return c.fatalError(ctx, fmt.Sprintf("Class %s cannot implement interface Throwable, extend Exception or Error instead", c.Name))
+		}
+		// Non-enum classes cannot implement UnitEnum or BackedEnum
+		if !c.Type.Has(phpv.ZClassTypeEnum) && (intfClass == UnitEnum || intfClass == BackedEnum) {
+			return c.fatalError(ctx, fmt.Sprintf("Non-enum class %s cannot implement interface %s", c.Name, intfClass.Name))
+		}
+		c.Implementations = append(c.Implementations, intfClass)
+		// Add interface and its parents to the parents map for InstanceOf checks
+		if c.parents == nil {
+			c.parents = make(map[*ZClass]*ZClass)
+		}
+		c.parents[intfClass] = intfClass
+		// Also add the interface's own parents (transitively implemented interfaces)
+		for p := range intfClass.parents {
+			c.parents[p] = p
+		}
+		// Also add the interface's implementations (interfaces it extends)
+		for _, implIntf := range intfClass.Implementations {
+			c.parents[implIntf] = implIntf
+		}
+	}
+
+	// PHP requires that non-abstract classes implementing Traversable must do so through
+	// either Iterator or IteratorAggregate, not directly. Abstract classes are allowed
+	// to implement Traversable directly.
+	if c.Type != phpv.ZClassTypeInterface && c.Attr&phpv.ZClassAttr(phpv.ZClassExplicitAbstract) == 0 {
+		implementsTraversable := false
+		implementsIteratorOrAggregate := false
+		// Check direct implementations and parents (which include transitive interfaces)
+		if c.parents != nil {
+			if _, ok := c.parents[Traversable]; ok {
+				implementsTraversable = true
+			}
+			if _, ok := c.parents[Iterator]; ok {
+				implementsIteratorOrAggregate = true
+			}
+			if _, ok := c.parents[IteratorAggregate]; ok {
+				implementsIteratorOrAggregate = true
+			}
+		}
+		// Also check direct implementations list
+		for _, impl := range c.Implementations {
+			if impl == Traversable {
+				implementsTraversable = true
+			}
+			if impl == Iterator || impl == IteratorAggregate {
+				implementsIteratorOrAggregate = true
+			}
+		}
+		if implementsTraversable && !implementsIteratorOrAggregate {
+			return c.fatalError(ctx, fmt.Sprintf("Class %s must implement interface Traversable as part of either Iterator or IteratorAggregate", c.Name))
+		}
+	}
+
+	// Check mutual exclusion: cannot implement both Iterator and IteratorAggregate
+	// This applies to ALL non-interface classes, including abstract ones.
+	if c.Type != phpv.ZClassTypeInterface {
+		hasIterator := c.Implements(Iterator)
+		hasIteratorAggregate := c.Implements(IteratorAggregate)
+		if hasIterator && hasIteratorAggregate {
+			return c.fatalError(ctx, fmt.Sprintf("Class %s cannot implement both Iterator and IteratorAggregate at the same time", c.Name))
+		}
+	}
+
+	// Auto-implement Stringable interface for classes with __toString().
+	if c.Type != phpv.ZClassTypeInterface && c.Type != phpv.ZClassTypeTrait {
+		if _, hasToString := c.GetMethod("__tostring"); hasToString {
+			alreadyImplements := false
+			for _, impl := range c.Implementations {
+				if impl == Stringable {
+					alreadyImplements = true
+					break
+				}
+			}
+			if !alreadyImplements && (c.parents == nil || c.parents[Stringable] == nil) {
+				c.Implementations = append(c.Implementations, Stringable)
+				if c.parents == nil {
+					c.parents = make(map[*ZClass]*ZClass)
+				}
+				c.parents[Stringable] = Stringable
+			}
+		}
+	}
+
+	// Emit Serializable interface deprecation warning (PHP 8.1+)
+	// Only emit if the class does NOT also have __serialize/__unserialize (forward-compatible classes)
+	// Ignore the error return - this deprecation should not prevent class registration
+	if c.Type != phpv.ZClassTypeInterface && c.Type != phpv.ZClassTypeTrait && c.Implements(Serializable) {
+		_, hasNewSerialize := c.GetMethod("__serialize")
+		_, hasNewUnserialize := c.GetMethod("__unserialize")
+		if !hasNewSerialize || !hasNewUnserialize {
+			locOpt := []any{}
+			if c.L != nil {
+				locOpt = append(locOpt, logopt.Data{Loc: c.L})
+			}
+			_ = ctx.Deprecated("%s implements the Serializable interface, which is deprecated. Implement __serialize() and __unserialize() instead (or in addition, if support for old PHP versions is necessary)", append([]any{c.Name}, locOpt...)...)
+		}
+	}
+
+	// Try to resolve constants eagerly, but if resolution fails (e.g. forward
+	// reference to a class not yet defined), leave them as CompileDelayed for
+	// lazy resolution when accessed (handled in compile-classref.go).
+	for _, k := range c.ConstOrder {
+		cc := c.Const[k]
+		if cc == nil {
+			continue
+		}
+		if r, ok := cc.Value.(*phpv.CompileDelayed); ok {
+			z, err := r.Run(ctx)
+			if err == nil {
+				c.Const[k].Value = z.Value()
+			} else {
+				// If resolution fails (e.g. forward reference to a class not yet defined),
+				// leave as CompileDelayed for lazy resolution.
+				// However, if an exception object was created and will be discarded,
+				// release its object ID so it doesn't shift IDs for subsequent objects.
+				if ex, ok2 := err.(*phperr.PhpThrow); ok2 && ex.Obj != nil {
+					type objIDer interface{ GetObjID() int }
+					if idObj, ok3 := ex.Obj.(objIDer); ok3 {
+						ctx.Global().ReleaseObjectID(idObj.GetObjID())
+					}
+				}
+			}
+		}
+	}
+	// Property defaults are resolved lazily in GetStaticProps() and
+	// ZObject.init() to support forward references to classes/constants
+	// not yet defined at class compilation time.
+	// Check interface properties: interfaces can only have hooked properties (PHP 8.4+)
+	if c.Type == phpv.ZClassTypeInterface && len(c.Props) > 0 {
+		for _, prop := range c.Props {
+			if !prop.HasHooks {
+				return c.fatalError(ctx, fmt.Sprintf("Interfaces may only include hooked properties"))
+			}
+		}
+	}
+	for _, m := range c.Methods {
+		if c.Type == phpv.ZClassTypeInterface && !m.Empty {
+			loc := m.Loc
+			if loc == nil {
+				loc = c.L
+			}
+			return c.fatalErrorAt(ctx, fmt.Sprintf("Interface function %s::%s() cannot contain body", c.Name, m.Name), loc)
+		}
+		// Check private interface methods
+		if c.Type == phpv.ZClassTypeInterface && m.Modifiers.Has(phpv.ZAttrPrivate) {
+			loc := m.Loc
+			if loc == nil {
+				loc = c.L
+			}
+			return c.fatalErrorAt(ctx, fmt.Sprintf("Access type for interface method %s::%s() must be public", c.Name, m.Name), loc)
+		}
+		// Check final/abstract modifiers on interface methods
+		if c.Type == phpv.ZClassTypeInterface && m.Modifiers.Has(phpv.ZAttrFinal) {
+			loc := m.Loc
+			if loc == nil {
+				loc = c.L
+			}
+			return c.fatalErrorAt(ctx, fmt.Sprintf("Interface method %s::%s() must not be final", c.Name, m.Name), loc)
+		}
+		if c.Type == phpv.ZClassTypeInterface && m.Modifiers.Has(phpv.ZAttrAbstract) {
+			loc := m.Loc
+			if loc == nil {
+				loc = c.L
+			}
+			return c.fatalErrorAt(ctx, fmt.Sprintf("Interface method %s::%s() must not be abstract", c.Name, m.Name), loc)
+		}
+		if m.Modifiers.Has(phpv.ZAttrAbstract) && m.Modifiers.Has(phpv.ZAttrFinal) {
+			return c.fatalError(ctx, "Cannot use the final modifier on an abstract method")
+		}
+		// Warn about final private methods (they can never be overridden)
+		// Skip for trait-imported methods where final came from the trait (PHP relaxes this)
+		if m.Modifiers.Has(phpv.ZAttrFinal) && m.Modifiers.Has(phpv.ZAttrPrivate) && (m.Class == nil || m.Class == c) && m.Name.ToLower() != "__construct" && m.FromTrait == nil {
+			phpErr := &phpv.PhpError{
+				Err:  fmt.Errorf("Private methods cannot be final as they are never overridden by other classes"),
+				Code: phpv.E_WARNING,
+				Loc:  m.Loc,
+			}
+			ctx.Global().LogError(phpErr)
+		}
+		if comp, ok := m.Method.(phpv.Compilable); ok {
+			err := comp.Compile(ctx)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	// Validate attributes on the class itself, its methods, properties, and constants
+	if err := c.validateAttributes(ctx); err != nil {
+		return err
+	}
+
+	// Validate magic method signatures
+	if err := c.validateMagicMethods(ctx); err != nil {
+		return err
+	}
+
+	// Import abstract methods and constants from interfaces that aren't already defined
+	for _, intf := range c.Implementations {
+		for n, m := range intf.Methods {
+			if ours, gotit := c.Methods[n]; !gotit {
+				c.Methods[n] = m
+			} else {
+				// Check access level: interface methods are implicitly public,
+				// so implementing class methods must also be public
+				if !m.Modifiers.Has(phpv.ZAttrPrivate) {
+					// Interface method is public (or protected for abstract)
+					intfAccess := m.Modifiers.Access()
+					if intfAccess == 0 {
+						intfAccess = phpv.ZAttrPublic // interface methods default to public
+					}
+					oursAccess := ours.Modifiers.Access()
+					if oursAccess == 0 {
+						oursAccess = phpv.ZAttrPublic
+					}
+					if intfAccess == phpv.ZAttrPublic && oursAccess != phpv.ZAttrPublic {
+						loc := ours.Loc
+						if loc == nil {
+							loc = c.L
+						}
+						return c.fatalErrorAt(ctx, fmt.Sprintf("Access level to %s::%s() must be public (as in class %s)", c.Name, ours.Name, intf.Name), loc)
+					}
+				}
+				// Check method signature compatibility for interface implementations
+				if err := c.checkMethodCompatibility(ctx, ours, m); err != nil {
+					return err
+				}
+			}
+		}
+		for _, k := range intf.ConstOrder {
+			if v := intf.Const[k]; v != nil {
+				if existing, exists := c.Const[k]; !exists {
+					c.Const[k] = v
+					c.ConstOrder = append(c.ConstOrder, k)
+					// Track which interface provided this constant for ambiguity detection
+					if c.constSource == nil {
+						c.constSource = make(map[phpv.ZString]phpv.ZString)
+					}
+					c.constSource[k] = intf.Name
+				} else if existing == v {
+					// Same constant object (diamond inheritance) - no conflict
+				} else if existing.DeclaringClass != nil && existing.DeclaringClass == v.DeclaringClass {
+					// Same original declaring class via different inheritance paths (diamond) - no conflict
+				} else {
+					// Check visibility: interface constants are implicitly public,
+					// so the implementing class must also make them public
+					if !v.Modifiers.IsPrivate() && existing.Modifiers.IsPrivate() {
+						return c.fatalError(ctx, fmt.Sprintf("Access level to %s::%s must be public (as in interface %s)", c.Name, k, intf.Name))
+					}
+					if !v.Modifiers.IsPrivate() && !v.Modifiers.IsProtected() && existing.Modifiers.IsProtected() {
+						return c.fatalError(ctx, fmt.Sprintf("Access level to %s::%s must be public (as in interface %s)", c.Name, k, intf.Name))
+					}
+					if v.Modifiers.Has(phpv.ZAttrFinal) {
+						return c.fatalError(ctx, fmt.Sprintf("%s::%s cannot override final constant %s::%s", c.Name, k, intf.Name, k))
+					}
+					// Check ambiguity: constant from different source
+					if src, hasSrc := c.constSource[k]; hasSrc && src != intf.Name {
+						classType := "Class"; if c.Type.IsInterface() { classType = "Interface" }; return c.fatalError(ctx, fmt.Sprintf("%s %s inherits both %s::%s and %s::%s, which is ambiguous", classType, c.Name, src, k, intf.Name, k))
+					}
+				}
+			}
+		}
+	}
+
+	// Special check: even abstract classes must implement private abstract trait methods,
+	// because private methods are not inherited to subclasses.
+	if c.Type != phpv.ZClassTypeInterface && c.Type != phpv.ZClassTypeTrait && c.Attr&phpv.ZClassAttr(phpv.ZClassExplicitAbstract) != 0 {
+		var privateUnimpl []string
+		for _, m := range c.Methods {
+			if m.Empty && m.Modifiers.Has(phpv.ZAttrAbstract) && m.Modifiers.Has(phpv.ZAttrPrivate) && m.FromTrait != nil {
+				privateUnimpl = append(privateUnimpl, string(c.Name)+"::"+string(m.Name))
+			}
+		}
+		if len(privateUnimpl) > 0 {
+			displayName := c.GetName()
+			// Private abstract trait methods use "must implement" format (not "contains")
+			msg := fmt.Sprintf("Class %s must implement %d abstract method", displayName, len(privateUnimpl))
+			if len(privateUnimpl) > 1 {
+				msg += "s"
+			}
+			msg += " ("
+			for i, u := range privateUnimpl {
+				if i > 0 {
+					msg += ", "
+				}
+				msg += u
+			}
+			msg += ")"
+			return c.fatalError(ctx, msg)
+		}
+	}
+
+	// Validate: non-abstract, non-interface classes must implement all abstract methods
+	if c.Type != phpv.ZClassTypeInterface && c.Type != phpv.ZClassTypeTrait && c.Attr&phpv.ZClassAttr(phpv.ZClassExplicitAbstract) == 0 {
+		var ownAbstract []string   // abstract methods declared in this class source code
+		var unimplemented []string // inherited abstract methods not implemented
+		for _, m := range c.Methods {
+			isAbstract := m.Empty && (m.Modifiers.Has(phpv.ZAttrAbstract) || (m.Class != nil && m.Class.GetType() == phpv.ZClassTypeInterface))
+			if isAbstract {
+				// Methods imported from traits are "inherited" (not "declared" in source)
+				if m.FromTrait != nil {
+					// Trait-imported abstract methods use the composing class name (C::method)
+					unimplemented = append(unimplemented, string(c.Name)+"::"+string(m.Name))
+				} else if m.Class == nil || m.Class == c {
+					// Declared in this class source code
+					ownAbstract = append(ownAbstract, string(m.Name))
+				} else {
+					// Inherited from parent/interface
+					unimplemented = append(unimplemented, string(m.Class.GetName())+"::"+string(m.Name))
+				}
+			}
+		}
+		if len(ownAbstract) > 0 && len(unimplemented) == 0 {
+			// PHP: "Class X declares abstract method Y() and must therefore be declared abstract"
+			return c.fatalError(ctx, fmt.Sprintf("Class %s declares abstract method %s() and must therefore be declared abstract", c.GetName(), ownAbstract[0]))
+		}
+		// If there are both own abstract and unimplemented, combine them all as unimplemented
+		if len(ownAbstract) > 0 {
+			for _, name := range ownAbstract {
+				unimplemented = append(unimplemented, string(c.GetName())+"::"+name)
+			}
+		}
+		if len(unimplemented) > 0 {
+			displayName := c.GetName()
+			isAnon := strings.Contains(string(c.Name), "@anonymous")
+			var msg string
+			if isAnon {
+				// PHP 8.5: Anonymous classes use shorter "must implement" format since they can't be declared abstract
+				msg = fmt.Sprintf("Class %s must implement %d abstract method", displayName, len(unimplemented))
+				if len(unimplemented) > 1 {
+					msg += "s"
+				}
+			} else {
+				msg = fmt.Sprintf("Class %s contains %d abstract method", displayName, len(unimplemented))
+				if len(unimplemented) > 1 {
+					msg += "s"
+				}
+				msg += " and must therefore be declared abstract or implement the remaining method"
+				if len(unimplemented) > 1 {
+					msg += "s"
+				}
+			}
+			msg += " ("
+			for i, u := range unimplemented {
+				if i > 0 {
+					msg += ", "
+				}
+				msg += u
+			}
+			msg += ")"
+			return c.fatalError(ctx, msg)
+		}
+	}
+
+	// PHP 8.4: Validate abstract property hooks - non-abstract classes must not have abstract hooks
+	if c.Type != phpv.ZClassTypeInterface && c.Type != phpv.ZClassTypeTrait && c.Attr&phpv.ZClassAttr(phpv.ZClassExplicitAbstract) == 0 {
+		var abstractHooks []string
+
+		// Check own props for abstract hooks
+		for _, prop := range c.Props {
+			if prop.GetIsAbstract && prop.GetHook == nil {
+				abstractHooks = append(abstractHooks, string(c.Name)+"::$"+string(prop.VarName)+"::get")
+			}
+			if prop.SetIsAbstract && prop.SetHook == nil {
+				abstractHooks = append(abstractHooks, string(c.Name)+"::$"+string(prop.VarName)+"::set")
+			}
+		}
+
+		// Build a map of properties declared in this class (own only, not inherited)
+		ownProps := make(map[phpv.ZString]*phpv.ZClassProp)
+		for _, prop := range c.Props {
+			ownProps[prop.VarName] = prop
+		}
+
+		// Build a complete map of all properties available in this class (own + inherited)
+		allProps := make(map[phpv.ZString]*phpv.ZClassProp)
+		// Walk parent chain from furthest to closest so child overrides parent
+		var parentChain []*ZClass
+		for parent := c.Extends; parent != nil; parent = parent.Extends {
+			parentChain = append(parentChain, parent)
+		}
+		for i := len(parentChain) - 1; i >= 0; i-- {
+			for _, prop := range parentChain[i].Props {
+				allProps[prop.VarName] = prop
+			}
+		}
+		for _, prop := range c.Props {
+			allProps[prop.VarName] = prop
+		}
+
+		// Check inherited abstract hooks from parent classes.
+		// Check ownProps first, then intermediate parents for concrete implementations.
+		seenAbstractHook := make(map[string]bool)
+		for parent := c.Extends; parent != nil; parent = parent.Extends {
+			for _, parentProp := range parent.Props {
+				concrete := ownProps[parentProp.VarName]
+				// A plain non-hooked non-readonly property satisfies any abstract hook.
+				if concrete != nil && !concrete.HasHooks && !concrete.Modifiers.IsReadonly() {
+					continue
+				}
+				// If no own prop, check intermediate parents
+				if concrete == nil {
+					for mid := c.Extends; mid != nil && mid != parent; mid = mid.Extends {
+						for _, midProp := range mid.Props {
+							if midProp.VarName == parentProp.VarName {
+								concrete = midProp
+								break
+							}
+						}
+						if concrete != nil {
+							break
+						}
+					}
+					if concrete != nil && !concrete.HasHooks && !concrete.Modifiers.IsReadonly() {
+						continue
+					}
+				}
+				if parentProp.GetIsAbstract && parentProp.GetHook == nil {
+					hookKey := string(parentProp.VarName) + "::get"
+					if !seenAbstractHook[hookKey] {
+						seenAbstractHook[hookKey] = true
+						satisfied := false
+						if concrete != nil {
+							if concrete.GetHook != nil || (concrete.HasGetDeclared && !concrete.GetIsAbstract) || concrete.Modifiers.IsReadonly() || !concrete.HasHooks {
+								satisfied = true
+							}
+						}
+						if !satisfied {
+							abstractHooks = append(abstractHooks, string(parent.Name)+"::$"+string(parentProp.VarName)+"::get")
+						}
+					}
+				}
+				if parentProp.SetIsAbstract && parentProp.SetHook == nil {
+					hookKey := string(parentProp.VarName) + "::set"
+					if !seenAbstractHook[hookKey] {
+						seenAbstractHook[hookKey] = true
+						satisfied := false
+						if concrete != nil {
+							if concrete.SetHook != nil || (concrete.HasSetDeclared && !concrete.SetIsAbstract) || (!concrete.HasHooks && !concrete.Modifiers.IsReadonly()) {
+								satisfied = true
+							}
+						}
+						if !satisfied {
+							abstractHooks = append(abstractHooks, string(parent.Name)+"::$"+string(parentProp.VarName)+"::set")
+						}
+					}
+				}
+			}
+		}
+
+		// Check interface properties with hooks
+		for _, impl := range c.Implementations {
+			if impl.Type != phpv.ZClassTypeInterface {
+				continue
+			}
+			for _, ifaceProp := range impl.Props {
+				if !ifaceProp.HasHooks {
+					continue
+				}
+				// Check own props AND all props (including inherited from parent)
+				concrete := allProps[ifaceProp.VarName]
+				// A plain property (not hooked) satisfies any interface hook requirement
+				if concrete != nil && !concrete.HasHooks {
+					continue
+				}
+				if ifaceProp.HasGetDeclared {
+					if concrete == nil || (concrete.GetHook == nil && !concrete.HasGetDeclared && concrete.Modifiers.Has(phpv.ZAttrAbstract)) {
+						abstractHooks = append(abstractHooks, string(impl.Name)+"::$"+string(ifaceProp.VarName)+"::get")
+					}
+				}
+				if ifaceProp.HasSetDeclared {
+					if concrete == nil || (concrete.SetHook == nil && !concrete.HasSetDeclared && concrete.Modifiers.Has(phpv.ZAttrAbstract)) {
+						abstractHooks = append(abstractHooks, string(impl.Name)+"::$"+string(ifaceProp.VarName)+"::set")
+					}
+				}
+			}
+		}
+
+		if len(abstractHooks) > 0 {
+			msg := fmt.Sprintf("Class %s contains %d abstract method", c.GetName(), len(abstractHooks))
+			if len(abstractHooks) > 1 {
+				msg += "s"
+			}
+			msg += " and must therefore be declared abstract or implement the remaining method"
+			if len(abstractHooks) > 1 {
+				msg += "s"
+			}
+			msg += " ("
+			for i, h := range abstractHooks {
+				if i > 0 {
+					msg += ", "
+				}
+				msg += h
+			}
+			msg += ")"
+			return c.fatalError(ctx, msg)
+		}
+	}
+
+	// PHP 8.4: Check for overriding final property hooks
+	if c.Extends != nil {
+		for _, prop := range c.Props {
+			if !prop.HasHooks {
+				continue
+			}
+			// Find the same property in the parent hierarchy
+			for parent := c.Extends; parent != nil; parent = parent.Extends {
+				for _, parentProp := range parent.Props {
+					if parentProp.VarName != prop.VarName {
+						continue
+					}
+					if parentProp.GetIsFinal && prop.HasGetDeclared {
+						return c.fatalError(ctx, fmt.Sprintf("Cannot override final property hook %s::$%s::get()", parent.GetName(), prop.VarName))
+					}
+					if parentProp.SetIsFinal && prop.HasSetDeclared {
+						return c.fatalError(ctx, fmt.Sprintf("Cannot override final property hook %s::$%s::set()", parent.GetName(), prop.VarName))
+					}
+				}
+			}
+		}
+	}
+
+	// Validate #[\Override] attribute: methods with this attribute must have a
+	// matching method in a parent class, implemented interface, or abstract trait method.
+	if c.Type != phpv.ZClassTypeTrait {
+		for _, m := range c.Methods {
+			if !methodHasOverride(m) {
+				continue
+			}
+			// Only check methods defined in this class (not inherited from parent)
+			if m.Class != nil && m.Class != c {
+				continue
+			}
+
+			methodName := m.Name.ToLower()
+			found := false
+
+			// Check parent class for a matching method
+			if c.Extends != nil {
+				if parentMethod, ok := c.Extends.Methods[methodName]; ok {
+					if methodName == "__construct" {
+						// For __construct, only abstract parent constructors satisfy #[\Override]
+						if parentMethod.Modifiers.Has(phpv.ZAttrAbstract) || (parentMethod.Empty && parentMethod.Class != nil && parentMethod.Class.GetType() == phpv.ZClassTypeInterface) {
+							found = true
+						}
+					} else if !parentMethod.Modifiers.Has(phpv.ZAttrPrivate) {
+						found = true
+					}
+				}
+			}
+
+			// Check directly implemented interfaces
+			if !found {
+				for _, intf := range c.Implementations {
+					if _, ok := intf.Methods[methodName]; ok {
+						found = true
+						break
+					}
+				}
+			}
+
+			// Check used traits for abstract methods with the same name
+			if !found {
+				for _, tu := range c.TraitUses {
+					for _, traitName := range tu.TraitNames {
+						traitClass, err := ctx.Global().GetClass(ctx, traitName, true)
+						if err != nil {
+							continue
+						}
+						if tc, ok := traitClass.(*ZClass); ok {
+							if tm, ok := tc.Methods[methodName]; ok {
+								if tm.Modifiers.Has(phpv.ZAttrAbstract) || tm.Empty {
+									found = true
+									break
+								}
+							}
+						}
+					}
+					if found {
+						break
+					}
+				}
+			}
+
+			if !found {
+				loc := m.Loc
+				if loc == nil {
+					loc = c.L
+				}
+				return c.fatalErrorAt(ctx, fmt.Sprintf("%s::%s() has #[\\Override] attribute, but no matching parent method exists", c.GetName(), m.Name), loc)
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateAttributes validates attributes on the class itself, its methods,
+// properties, and class constants. This performs compile-time attribute validation
+// for known internal attributes (target checking, repeat checking) and special
+// rules like #[Attribute] only on non-abstract concrete classes.
+func (c *ZClass) validateAttributes(ctx phpv.Context) error {
+	// Validate class-level attributes
+	if len(c.Attributes) > 0 {
+		// Skip compile-time validation if #[DelayedTargetValidation] is present
+		delayed := hasDelayedTargetValidation(c.Attributes)
+
+		if !delayed {
+			// Special validation for #[Attribute]: can only be applied to non-abstract,
+			// non-interface, non-trait, non-enum classes
+			for _, attr := range c.Attributes {
+				name := attr.ClassName
+				if name == "Attribute" || name == "\\Attribute" {
+					if c.Type.Has(phpv.ZClassTypeInterface) {
+						return c.fatalError(ctx, fmt.Sprintf("Cannot apply #[\\Attribute] to interface %s", c.GetName()))
+					} else if c.Type.Has(phpv.ZClassTypeTrait) {
+						return c.fatalError(ctx, fmt.Sprintf("Cannot apply #[\\Attribute] to trait %s", c.GetName()))
+					} else if c.Type.Has(phpv.ZClassTypeEnum) {
+						return c.fatalError(ctx, fmt.Sprintf("Cannot apply #[\\Attribute] to enum %s", c.GetName()))
+					} else if c.Attr.Has(phpv.ZClassExplicitAbstract) {
+						return c.fatalError(ctx, fmt.Sprintf("Cannot apply #[\\Attribute] to abstract class %s", c.GetName()))
+					}
+				}
+				// Special validation for #[AllowDynamicProperties]
+				if name == "AllowDynamicProperties" || name == "\\AllowDynamicProperties" {
+					if c.Type.Has(phpv.ZClassTypeInterface) {
+						return c.fatalError(ctx, fmt.Sprintf("Cannot apply #[\\AllowDynamicProperties] to interface %s", c.GetName()))
+					} else if c.Type.Has(phpv.ZClassTypeTrait) {
+						return c.fatalError(ctx, fmt.Sprintf("Cannot apply #[\\AllowDynamicProperties] to trait %s", c.GetName()))
+					} else if c.Type.Has(phpv.ZClassTypeEnum) {
+						return c.fatalError(ctx, fmt.Sprintf("Cannot apply #[\\AllowDynamicProperties] to enum %s", c.GetName()))
+					} else if c.Attr.Has(phpv.ZClassReadonly) {
+						return c.fatalError(ctx, fmt.Sprintf("Cannot apply #[\\AllowDynamicProperties] to readonly class %s", c.GetName()))
+					}
+				}
+			}
+		}
+
+		// Validate target and repeat for class attributes (internal attrs only at compile time)
+		if msg := ValidateInternalAttributeList(ctx, c.Attributes, AttributeTARGET_CLASS); msg != "" {
+			return c.fatalError(ctx, msg)
+		}
+	}
+
+	// Validate method-level attributes (internal attrs only at compile time)
+	for _, m := range c.Methods {
+		// Only validate methods defined in this class (not inherited)
+		if m.Class != nil && m.Class != c {
+			continue
+		}
+		if len(m.Attributes) > 0 {
+			if msg := ValidateInternalAttributeList(ctx, m.Attributes, AttributeTARGET_METHOD); msg != "" {
+				loc := m.Loc
+				if loc == nil {
+					loc = c.L
+				}
+				return c.fatalErrorAt(ctx, msg, loc)
+			}
+			// NoDiscard-specific validations
+			for _, attr := range m.Attributes {
+				if attr.ClassName == "NoDiscard" || attr.ClassName == "\\NoDiscard" {
+					lowerName := string(m.Name.ToLower())
+					if lowerName == "__construct" || lowerName == "__clone" {
+						return c.fatalError(ctx, fmt.Sprintf("Method %s::%s cannot be #[\\NoDiscard]", c.Name, m.Name))
+					}
+					// Check return type
+					type returnTypeGetter interface {
+						GetReturnType() *phpv.TypeHint
+					}
+					if rtg, ok := m.Method.(returnTypeGetter); ok {
+						if rt := rtg.GetReturnType(); rt != nil {
+							if rt.Type() == phpv.ZtVoid {
+								return c.fatalError(ctx, "A void function does not return a value, but #[\\NoDiscard] requires a return value")
+							}
+							if rt.Type() == phpv.ZtNever {
+								return c.fatalError(ctx, "A never returning function does not return a value, but #[\\NoDiscard] requires a return value")
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Validate property-level attributes (internal attrs only at compile time)
+	for _, p := range c.Props {
+		if len(p.Attributes) > 0 {
+			if msg := ValidateInternalAttributeList(ctx, p.Attributes, AttributeTARGET_PROPERTY); msg != "" {
+				return c.fatalError(ctx, msg)
+			}
+		}
+	}
+
+	// Validate class constant attributes (internal attrs only at compile time)
+	for _, k := range c.ConstOrder {
+		cc := c.Const[k]
+		if cc == nil {
+			continue
+		}
+		if len(cc.Attributes) > 0 {
+			if msg := ValidateInternalAttributeList(ctx, cc.Attributes, AttributeTARGET_CLASS_CONSTANT); msg != "" {
+				return c.fatalError(ctx, msg)
+			}
+		}
+	}
+
+	return nil
+}
+
+// methodHasOverride checks if a method has the #[\Override] attribute.
+func methodHasOverride(m *phpv.ZClassMethod) bool {
+	for _, attr := range m.Attributes {
+		if attr.ClassName == "Override" {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *ZClass) checkMethodCompatibility(ctx phpv.Context, child *phpv.ZClassMethod, parent *phpv.ZClassMethod) error {
+	// Check static/non-static mismatch
+	childStatic := child.Modifiers.Has(phpv.ZAttrStatic)
+	parentStatic := parent.Modifiers.Has(phpv.ZAttrStatic)
+	if parentStatic && !childStatic {
+		loc := child.Loc
+		if loc == nil {
+			loc = c.L
+		}
+		return c.fatalErrorAt(ctx, fmt.Sprintf("Cannot make static method %s::%s() non static in class %s", parent.Class.GetName(), parent.Name, c.Name), loc)
+	}
+	if !parentStatic && childStatic {
+		loc := child.Loc
+		if loc == nil {
+			loc = c.L
+		}
+		return c.fatalErrorAt(ctx, fmt.Sprintf("Cannot make non static method %s::%s() static in class %s", parent.Class.GetName(), parent.Name, c.Name), loc)
+	}
+
+	childFGA, childOK := child.Method.(phpv.FuncGetArgs)
+	parentFGA, parentOK := parent.Method.(phpv.FuncGetArgs)
+	if !childOK || !parentOK {
+		return nil
+	}
+
+	childArgs := childFGA.GetArgs()
+	parentArgs := parentFGA.GetArgs()
+
+	// Count required args (variadic params are never required)
+	childRequired := 0
+	for _, a := range childArgs {
+		if a.Required && !a.Variadic {
+			childRequired++
+		}
+	}
+	parentRequired := 0
+	for _, a := range parentArgs {
+		if a.Required && !a.Variadic {
+			parentRequired++
+		}
+	}
+
+	// Count non-variadic parent params for comparison
+	parentNonVariadic := len(parentArgs)
+	parentHasVariadic := false
+	for i, a := range parentArgs {
+		if a.Variadic {
+			parentNonVariadic = i
+			parentHasVariadic = true
+			break
+		}
+	}
+
+	childNonVariadic := len(childArgs)
+	childHasVariadic := false
+	for i, a := range childArgs {
+		if a.Variadic {
+			childNonVariadic = i
+			childHasVariadic = true
+			break
+		}
+	}
+
+	// Child cannot require more parameters than parent requires
+	// Child cannot have fewer non-variadic parameters than parent's non-variadic count
+	// (unless child has a variadic parameter to absorb the rest)
+	incompatible := false
+	if childRequired > parentRequired {
+		incompatible = true
+	}
+	if !childHasVariadic && childNonVariadic < parentNonVariadic {
+		incompatible = true
+	}
+
+	// Check by-reference flag compatibility for each parameter
+	if !incompatible {
+		limit := parentNonVariadic
+		if childNonVariadic < limit {
+			limit = childNonVariadic
+		}
+		for i := 0; i < limit; i++ {
+			if parentArgs[i].Ref != childArgs[i].Ref {
+				incompatible = true
+				break
+			}
+		}
+	}
+
+	// If parent has variadic, check by-ref compatibility of child's extra params against parent variadic
+	if !incompatible && parentHasVariadic {
+		parentVariadicArg := parentArgs[parentNonVariadic]
+		for i := parentNonVariadic; i < childNonVariadic; i++ {
+			if parentVariadicArg.Ref != childArgs[i].Ref {
+				incompatible = true
+				break
+			}
+		}
+	}
+
+	// Check return-by-reference compatibility
+	if !incompatible {
+		type retByRefGetter interface {
+			ReturnsByRef() bool
+		}
+		var parentRetRef, childRetRef bool
+		if rr, ok := parent.Method.(retByRefGetter); ok {
+			parentRetRef = rr.ReturnsByRef()
+		}
+		if rr, ok := child.Method.(retByRefGetter); ok {
+			childRetRef = rr.ReturnsByRef()
+		}
+		if parentRetRef != childRetRef {
+			incompatible = true
+		}
+	}
+
+	// Check type hint compatibility for each parameter (contravariance: child can widen)
+	if !incompatible {
+		for i := 0; i < parentNonVariadic && i < childNonVariadic; i++ {
+			ph := parentArgs[i].Hint
+			ch := childArgs[i].Hint
+			if ph == nil && ch == nil {
+				continue
+			}
+			if ph != nil && ch == nil {
+				// Child drops type hint — this is always a widening (accepts anything)
+				// which is compatible with contravariance
+				continue
+			}
+			if ph == nil && ch != nil {
+				// Child adds type hint where parent had none — narrowing, incompatible
+				// Exception: "mixed" accepts everything, same as no type
+				if ch.Type() == phpv.ZtMixed {
+					continue
+				}
+				incompatible = true
+				break
+			}
+			// Both have hints — check if child type is a supertype of (or equal to) parent type.
+			// For contravariance, the child must accept at least everything the parent accepts.
+			if !typeHintIsWidening(ctx, ch, ph) {
+				incompatible = true
+				break
+			}
+		}
+	}
+
+	// Check return type covariance (child must return subtype of parent)
+	if !incompatible {
+		type retTypeGetter interface {
+			GetReturnType() *phpv.TypeHint
+		}
+		var parentRT, childRT *phpv.TypeHint
+		if rtg, ok := parent.Method.(retTypeGetter); ok {
+			parentRT = rtg.GetReturnType()
+		}
+		if rtg, ok := child.Method.(retTypeGetter); ok {
+			childRT = rtg.GetReturnType()
+		}
+		if parentRT != nil && childRT != nil {
+			// Detect unavailable intersection classes.
+			// Rule:
+			// 1. If the PARENT type has an intersection with unavailable members → error.
+			// 2. If the CHILD type has an intersection with unavailable members:
+			//    a. If there is a loadable child intersection member that satisfies the parent → OK.
+			//    b. Otherwise → error.
+			unavailParent := firstUnavailableIntersectionClass(ctx, parentRT)
+			if unavailParent != "" {
+				loc := child.Loc
+				if loc == nil {
+					loc = c.L
+				}
+				childSig := formatMethodSignature(c.Name, child, "")
+				selfResolve := phpv.ZString("")
+				if parent.FromTrait != nil {
+					selfResolve = c.Name
+				}
+				parentSig := formatMethodSignature(parent.Class.GetName(), parent, selfResolve)
+				return c.fatalErrorAt(ctx,
+					fmt.Sprintf("Could not check compatibility between %s and %s, because class %s is not available",
+						childSig, parentSig, unavailParent),
+					loc)
+			}
+			unavailChild := firstUnavailableIntersectionClass(ctx, childRT)
+			if unavailChild != "" {
+				// Check if any loadable member of the child intersection satisfies the parent type.
+				canVerify := intersectionHasLoadableMemberSatisfying(ctx, childRT, parentRT)
+				if !canVerify {
+					loc := child.Loc
+					if loc == nil {
+						loc = c.L
+					}
+					childSig := formatMethodSignature(c.Name, child, "")
+					selfResolve := phpv.ZString("")
+					if parent.FromTrait != nil {
+						selfResolve = c.Name
+					}
+					parentSig := formatMethodSignature(parent.Class.GetName(), parent, selfResolve)
+					return c.fatalErrorAt(ctx,
+						fmt.Sprintf("Could not check compatibility between %s and %s, because class %s is not available",
+							childSig, parentSig, unavailChild),
+						loc)
+				}
+				// A loadable member satisfies the parent — skip regular covariance check.
+			} else {
+				// Both have return types — child's return type must be a subtype of parent's
+				// (covariance: child must be narrower or equal)
+				// Special case: 'never' is the bottom type, always a valid covariant return type
+				// Special case: 'void' can only be returned by void parents (not mixed)
+				if childRT.Type() == phpv.ZtVoid && parentRT.Type() != phpv.ZtVoid {
+					incompatible = true
+				} else if childRT.Type() != phpv.ZtNever && childRT.Type() != phpv.ZtVoid && !typeHintIsWidening(ctx, parentRT, childRT) {
+					incompatible = true
+				}
+			}
+		} else if parentRT != nil && childRT == nil {
+			// Parent has return type, child drops it — incompatible
+			incompatible = true
+		}
+		// If parent has no return type and child adds one, that's okay (child is narrower)
+	}
+
+	if incompatible {
+		loc := child.Loc
+		if loc == nil {
+			loc = c.L
+		}
+		childSig := formatMethodSignature(c.Name, child, "")
+		selfResolve := phpv.ZString("")
+		if parent.FromTrait != nil {
+			selfResolve = c.Name
+		}
+		parentSig := formatMethodSignature(parent.Class.GetName(), parent, selfResolve)
+		return c.fatalErrorAt(ctx, fmt.Sprintf("Declaration of %s must be compatible with %s", childSig, parentSig), loc)
+	}
+	return nil
+}
+
+func formatMethodSignature(className phpv.ZString, m *phpv.ZClassMethod, selfResolveTo phpv.ZString) string {
+	fmtHint := func(h *phpv.TypeHint) string {
+		if selfResolveTo != "" {
+			return phpv.ResolveTypeHintSelf(h, selfResolveTo)
+		}
+		return h.String()
+	}
+
+	retByRef := ""
+	if rr, ok := m.Method.(interface{ ReturnsByRef() bool }); ok && rr.ReturnsByRef() {
+		retByRef = "& "
+	}
+	sig := retByRef + string(className) + "::" + string(m.Name) + "("
+	if fga, ok := m.Method.(phpv.FuncGetArgs); ok {
+		args := fga.GetArgs()
+		for i, a := range args {
+			if i > 0 {
+				sig += ", "
+			}
+			if a.Hint != nil {
+				sig += fmtHint(a.Hint) + " "
+			}
+			if a.Variadic {
+				sig += "..."
+			}
+			if a.Ref {
+				sig += "&"
+			}
+			sig += "$" + string(a.VarName)
+			if !a.Required && !a.Variadic && !a.ImplicitlyNullable {
+				sig += " = " + formatDefault(a.DefaultValue)
+			}
+		}
+	}
+	sig += ")"
+	// Check for return type: first from the Method's GetReturnType(), then from ZClassMethod.ReturnType
+	var retType *phpv.TypeHint
+	if rt, ok := m.Method.(interface {
+		GetReturnType() *phpv.TypeHint
+	}); ok {
+		retType = rt.GetReturnType()
+	}
+	if retType == nil && m.ReturnType != nil {
+		retType = m.ReturnType
+	}
+	if retType != nil {
+		sig += ": " + fmtHint(retType)
+	}
+	return sig
+}
+
+func formatDefault(v phpv.Val) string {
+	if v == nil {
+		return "NULL"
+	}
+	switch vt := v.(type) {
+	case phpv.ZNull:
+		return "null"
+	case phpv.ZInt:
+		return fmt.Sprintf("%d", vt)
+	case phpv.ZString:
+		s := string(vt)
+		if len(s) > 10 {
+			s = s[:10] + "..."
+		}
+		return fmt.Sprintf("'%s'", s)
+	case phpv.ZFloat:
+		return strconv.FormatFloat(float64(vt), 'G', 14, 64)
+	case phpv.ZBool:
+		if vt {
+			return "true"
+		}
+		return "false"
+	case *phpv.ZArray:
+		if vt.HashTable().Count() == 0 {
+			return "[]"
+		}
+		return "[...]"
+	case *phpv.CompileDelayed:
+		// Default value hasn't been resolved yet — try to format the runnable
+		return formatDelayedDefault(vt.V)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// formatDelayedDefault attempts to produce a display string for a CompileDelayed
+// default value by inspecting the underlying Runnable expression.
+func formatDelayedDefault(r phpv.Runnable) string {
+	if r == nil {
+		return "<default>"
+	}
+	// Use Dump to get a representation, falling back to a generic placeholder
+	var buf strings.Builder
+	if err := r.Dump(&buf); err == nil {
+		s := buf.String()
+		if s != "" {
+			return s
+		}
+	}
+	return "<default>"
+}
+
+func (c *ZClass) validateMagicMethods(ctx phpv.Context) error {
+	// Validate magic method argument counts
+	magicArgCounts := map[phpv.ZString]int{
+		"__call":        2,
+		"__callstatic":  2,
+		"__get":         1,
+		"__set":         2,
+		"__isset":       1,
+		"__unset":       1,
+		"__unserialize": 1,
+		"__set_state":   1,
+	}
+
+	for name, requiredArgs := range magicArgCounts {
+		m, ok := c.Methods[name]
+		if !ok {
+			continue
+		}
+		if m.Class != nil && m.Class != c {
+			continue // inherited, don't re-validate
+		}
+		if fga, ok := m.Method.(phpv.FuncGetArgs); ok {
+			args := fga.GetArgs()
+			if len(args) != requiredArgs {
+				loc := m.Loc
+				if loc == nil {
+					loc = c.L
+				}
+				return c.fatalErrorAt(ctx, fmt.Sprintf("Method %s::%s() must take exactly %d argument%s", c.Name, m.Name, requiredArgs, pluralS(requiredArgs)), loc)
+			}
+		}
+	}
+
+	// Validate methods that cannot take arguments:
+	// __clone, __destruct, __serialize, __sleep, __wakeup, __toString
+	noArgMethods := []phpv.ZString{"__clone", "__destruct", "__serialize", "__sleep", "__wakeup", "__tostring"}
+	for _, name := range noArgMethods {
+		m, ok := c.Methods[name]
+		if !ok {
+			continue
+		}
+		if m.Class != nil && m.Class != c {
+			continue // inherited, don't re-validate
+		}
+		if fga, ok := m.Method.(phpv.FuncGetArgs); ok {
+			args := fga.GetArgs()
+			if len(args) > 0 {
+				loc := m.Loc
+				if loc == nil {
+					loc = c.L
+				}
+				return c.fatalErrorAt(ctx, fmt.Sprintf("Method %s::%s() cannot take arguments", c.Name, m.Name), loc)
+			}
+		}
+	}
+
+	// Validate __construct, __destruct, __clone cannot be static
+	// Also __call, __get, __set, __isset, __unset, __toString cannot be static
+	noStaticMethods := []phpv.ZString{
+		"__construct", "__destruct", "__clone",
+		"__call", "__get", "__set", "__isset", "__unset", "__tostring",
+	}
+	for _, name := range noStaticMethods {
+		m, ok := c.Methods[name]
+		if !ok {
+			continue
+		}
+		if m.Class != nil && m.Class != c {
+			continue // inherited
+		}
+		if m.Modifiers.Has(phpv.ZAttrStatic) {
+			loc := m.Loc
+			if loc == nil {
+				loc = c.L
+			}
+			return c.fatalErrorAt(ctx, fmt.Sprintf("Method %s::%s() cannot be static", c.Name, m.Name), loc)
+		}
+	}
+
+	// Validate __callStatic and __set_state must be static
+	mustBeStatic := []phpv.ZString{"__callstatic", "__set_state"}
+	for _, name := range mustBeStatic {
+		m, ok := c.Methods[name]
+		if !ok {
+			continue
+		}
+		if m.Class != nil && m.Class != c {
+			continue // inherited
+		}
+		if !m.Modifiers.Has(phpv.ZAttrStatic) {
+			loc := m.Loc
+			if loc == nil {
+				loc = c.L
+			}
+			return c.fatalErrorAt(ctx, fmt.Sprintf("Method %s::%s() must be static", c.Name, m.Name), loc)
+		}
+	}
+
+	// Validate magic methods cannot take arguments by reference
+	noRefMethods := []phpv.ZString{
+		"__call", "__callstatic", "__get", "__set", "__isset", "__unset",
+	}
+	for _, name := range noRefMethods {
+		m, ok := c.Methods[name]
+		if !ok {
+			continue
+		}
+		if m.Class != nil && m.Class != c {
+			continue // inherited
+		}
+		if fga, ok := m.Method.(phpv.FuncGetArgs); ok {
+			for _, arg := range fga.GetArgs() {
+				if arg.Ref {
+					loc := m.Loc
+					if loc == nil {
+						loc = c.L
+					}
+					return c.fatalErrorAt(ctx, fmt.Sprintf("Method %s::%s() cannot take arguments by reference", c.Name, m.Name), loc)
+				}
+			}
+		}
+	}
+
+	// Validate parameter type hints for magic methods
+	// Map of method name → parameter index → required type name
+	type paramTypeReq struct {
+		paramIdx int
+		typeName string // "string" or "array"
+	}
+	paramTypeChecks := map[phpv.ZString][]paramTypeReq{
+		"__get":         {{0, "string"}},
+		"__set":         {{0, "string"}},
+		"__isset":       {{0, "string"}},
+		"__unset":       {{0, "string"}},
+		"__call":        {{0, "string"}, {1, "array"}},
+		"__callstatic":  {{0, "string"}, {1, "array"}},
+		"__unserialize": {{0, "array"}},
+		"__set_state":   {{0, "array"}},
+	}
+	for name, checks := range paramTypeChecks {
+		m, ok := c.Methods[name]
+		if !ok {
+			continue
+		}
+		if m.Class != nil && m.Class != c {
+			continue // inherited
+		}
+		fga, ok := m.Method.(phpv.FuncGetArgs)
+		if !ok {
+			continue
+		}
+		args := fga.GetArgs()
+		for _, check := range checks {
+			if check.paramIdx >= len(args) {
+				continue
+			}
+			arg := args[check.paramIdx]
+			if arg.Hint == nil {
+				continue
+			}
+			// Check if the type hint is compatible. The type hint must be the required
+			// type or a union that includes the required type. If the type hint is
+			// something incompatible (e.g. "int" when "string" is required), error.
+			if !magicParamTypeCompatible(arg.Hint, check.typeName) {
+				loc := m.Loc
+				if loc == nil {
+					loc = c.L
+				}
+				return c.fatalErrorAt(ctx, fmt.Sprintf("%s::%s(): Parameter #%d ($%s) must be of type %s when declared",
+					c.Name, m.Name, check.paramIdx+1, arg.VarName, check.typeName), loc)
+			}
+		}
+	}
+
+	// Note: non-public magic method warnings are emitted by warnNonPublicMagicMethods()
+	// which is called earlier in Compile() before inheritance checks.
+	// We only call it here for classes without extends (so it always runs).
+	if c.Extends == nil {
+		c.warnNonPublicMagicMethods(ctx)
+	}
+
+	return nil
+}
+
+// warnNonPublicMagicMethods emits warnings about non-public magic methods.
+// Called early in Compile() so warnings appear before inheritance errors.
+func (c *ZClass) warnNonPublicMagicMethods(ctx phpv.Context) {
+	mustBePublic := []phpv.ZString{
+		"__call", "__callstatic", "__get", "__set", "__isset", "__unset",
+		"__debuginfo", "__serialize", "__unserialize", "__invoke",
+		"__tostring",
+	}
+	for _, name := range mustBePublic {
+		m, ok := c.Methods[name]
+		if !ok {
+			continue
+		}
+		// Only warn if explicitly declared private or protected in this class (not inherited)
+		if (m.Modifiers.Has(phpv.ZAttrPrivate) || m.Modifiers.Has(phpv.ZAttrProtected)) && (m.Class == nil || m.Class == c) {
+			ctx.Warn("The magic method %s::%s() must have public visibility", c.Name, m.Name, logopt.NoFuncName(true), c.L)
+		}
+	}
+}
+
+// firstUnavailableClass returns the name of the first class/interface in any
+// type hint (including simple class types, unions, and intersection groups) that
+// cannot be loaded from the context. This is used for "Could not check compatibility"
+// error messages. Returns "" if all classes are available.
+func firstUnavailableClass(ctx phpv.Context, h *phpv.TypeHint) phpv.ZString {
+	if h == nil || ctx == nil {
+		return ""
+	}
+	if len(h.Union) > 0 {
+		for _, u := range h.Union {
+			if name := firstUnavailableClass(ctx, u); name != "" {
+				return name
+			}
+		}
+		return ""
+	}
+	if len(h.Intersection) > 0 {
+		for _, part := range h.Intersection {
+			if name := firstUnavailableClass(ctx, part); name != "" {
+				return name
+			}
+		}
+		return ""
+	}
+	// Simple object type (class/interface name)
+	if h.Type() == phpv.ZtObject && h.ClassName() != "" {
+		cn := h.ClassName()
+		switch cn.ToLower() {
+		case "self", "parent", "static", "callable", "iterable", "traversable":
+			// Built-in pseudo-types, always "available"
+			return ""
+		}
+		cls, err := ctx.Global().GetClass(ctx, cn, false)
+		if err != nil || phpv.IsNilClass(cls) {
+			return cn
+		}
+	}
+	return ""
+}
+
+// firstUnavailableIntersectionClass returns the name of the first class within
+// any intersection group in the type hint that cannot be loaded from the context.
+// Returns "" if all classes are available or there are no intersection groups.
+func firstUnavailableIntersectionClass(ctx phpv.Context, h *phpv.TypeHint) phpv.ZString {
+	if h == nil || ctx == nil {
+		return ""
+	}
+	if len(h.Union) > 0 {
+		for _, u := range h.Union {
+			if name := firstUnavailableIntersectionClass(ctx, u); name != "" {
+				return name
+			}
+		}
+		return ""
+	}
+	if len(h.Intersection) > 0 {
+		for _, part := range h.Intersection {
+			if part.Type() == phpv.ZtObject && part.ClassName() != "" {
+				cls, err := ctx.Global().GetClass(ctx, part.ClassName(), false)
+				if err != nil || phpv.IsNilClass(cls) {
+					return part.ClassName()
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// intersectionHasLoadableMemberSatisfying returns true if the intersection type h
+// contains at least one member (loadable or matching by name) that satisfies the parent
+// type constraint. This is used when the intersection has unavailable classes: if any
+// member can satisfy the parent (even by name match alone), the check can be considered done.
+func intersectionHasLoadableMemberSatisfying(ctx phpv.Context, childHint, parentHint *phpv.TypeHint) bool {
+	// Collect the intersection members to check (from union groups or direct intersection)
+	var checkHints []*phpv.TypeHint
+	if len(childHint.Union) > 0 {
+		for _, u := range childHint.Union {
+			if len(u.Intersection) > 0 {
+				checkHints = append(checkHints, u)
+			}
+		}
+	} else if len(childHint.Intersection) > 0 {
+		checkHints = []*phpv.TypeHint{childHint}
+	}
+
+	for _, intersect := range checkHints {
+		for _, member := range intersect.Intersection {
+			if member.Type() != phpv.ZtObject || member.ClassName() == "" {
+				continue
+			}
+			// First try with loadable class (full subtype check)
+			cls, err := ctx.Global().GetClass(ctx, member.ClassName(), false)
+			if err == nil && !phpv.IsNilClass(cls) {
+				if typeHintContains(ctx, parentHint, member) {
+					return true
+				}
+			} else {
+				// Class not loadable; fall back to name-based match in the parent type.
+				// If the member name appears by name in the parent union/type, treat as satisfied.
+				if typeHintContainsByName(parentHint, member.ClassName()) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// typeHintContainsByName checks if a type hint contains a class name as a direct member
+// (by case-insensitive name comparison, without loading the class). This is used as a
+// fallback when classes are unavailable for full subtype checking.
+func typeHintContainsByName(h *phpv.TypeHint, name phpv.ZString) bool {
+	if h == nil {
+		return false
+	}
+	nameLower := name.ToLower()
+	if len(h.Union) > 0 {
+		for _, u := range h.Union {
+			if typeHintContainsByName(u, name) {
+				return true
+			}
+		}
+		return false
+	}
+	// Handle iterable: check if name is "traversable" or "array"
+	if h.Type() == phpv.ZtObject && h.ClassName() == "iterable" {
+		return nameLower == "traversable" || nameLower == "array"
+	}
+	if h.Type() == phpv.ZtObject && h.ClassName() != "" {
+		return h.ClassName().ToLower() == nameLower
+	}
+	return false
+}
+
+// typeHintIsWidening checks if childHint accepts at least everything parentHint accepts.
+// This implements contravariance for parameter types: the child can accept more types.
+func typeHintIsWidening(ctx phpv.Context, childHint, parentHint *phpv.TypeHint) bool {
+	if childHint == nil {
+		// No type hint accepts everything — always a widening
+		return true
+	}
+	if parentHint == nil {
+		// Parent has no type but child does — narrowing
+		return false
+	}
+	// If child is "mixed", it accepts everything
+	if childHint.Type() == phpv.ZtMixed {
+		return true
+	}
+	// If parent is "mixed", child must also be mixed to be compatible
+	if parentHint.Type() == phpv.ZtMixed {
+		return childHint.Type() == phpv.ZtMixed
+	}
+
+	// Check nullable compatibility: if parent accepts null, child must also accept null
+	if parentHint.IsNullable() && !childHint.IsNullable() {
+		// Parent accepts null but child doesn't — narrowing
+		return false
+	}
+
+	// Gather all "leaf" types from parent (flatten unions)
+	parentTypes := flattenTypeHint(parentHint)
+
+	// For each type the parent accepts, the child must also accept it
+	for _, pt := range parentTypes {
+		if !typeHintContains(ctx, childHint, pt) {
+			return false
+		}
+	}
+	return true
+}
+
+// flattenTypeHint returns all the individual type hints in a (possibly union) type.
+func flattenTypeHint(h *phpv.TypeHint) []*phpv.TypeHint {
+	if len(h.Union) > 0 {
+		var result []*phpv.TypeHint
+		for _, u := range h.Union {
+			result = append(result, flattenTypeHint(u)...)
+		}
+		return result
+	}
+	return []*phpv.TypeHint{h}
+}
+
+// typeHintContains checks if a type hint (possibly union/intersection) contains a specific single type.
+// "Contains" means: every value satisfying h also satisfies target.
+// For intersection types A&B, every value satisfying A&B also satisfies A (since it must implement both).
+func typeHintContains(ctx phpv.Context, h *phpv.TypeHint, target *phpv.TypeHint) bool {
+	if len(h.Union) > 0 {
+		for _, u := range h.Union {
+			if typeHintContains(ctx, u, target) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// If h is an intersection type (A&B&C), h only accepts values that satisfy ALL members.
+	// So h "contains" target only if target values satisfy every member of h.
+	// For target to satisfy a member, each member must "contain" target.
+	if len(h.Intersection) > 0 {
+		if len(target.Intersection) > 0 {
+			// Both are intersections: h=A&B contains target=X&Y if for every member of h,
+			// target as a whole satisfies it. Target=X&Y satisfies member A if any of X,Y
+			// is a subtype of A.
+			for _, hp := range h.Intersection {
+				found := false
+				for _, tp := range target.Intersection {
+					if typeHintContains(ctx, hp, tp) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return false
+				}
+			}
+			return true
+		}
+		// target is a single type: h (A&B) contains target only if target satisfies
+		// every member of h. E.g., h=A&B, target=C: only if C is subtype of both A and B.
+		for _, part := range h.Intersection {
+			if !typeHintContains(ctx, part, target) {
+				return false
+			}
+		}
+		return true
+	}
+
+	if h.Type() == phpv.ZtMixed {
+		return true
+	}
+
+	// If target is an intersection (X&Y), every value of type X&Y satisfies each
+	// member individually. So h accepts X&Y if h accepts at least one member.
+	// For example: h=X accepts target=X&Y because every X&Y value is also an X.
+	if len(target.Intersection) > 0 {
+		for _, tp := range target.Intersection {
+			if typeHintContains(ctx, h, tp) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Handle "iterable" as a special case: it's equivalent to Traversable|array
+	if h.Type() == phpv.ZtObject && h.ClassName() == "iterable" {
+		// iterable contains array and Traversable
+		if target.Type() == phpv.ZtArray {
+			return true
+		}
+		if target.Type() == phpv.ZtObject && (target.ClassName() == "iterable" || target.ClassName().ToLower() == "traversable") {
+			return true
+		}
+		// target could be a class that implements Traversable
+		if target.Type() == phpv.ZtObject && target.ClassName() != "" && ctx != nil {
+			tClass, err1 := ctx.Global().GetClass(ctx, target.ClassName(), false)
+			traversable, err2 := ctx.Global().GetClass(ctx, "traversable", false)
+			if err1 == nil && err2 == nil && !phpv.IsNilClass(tClass) && !phpv.IsNilClass(traversable) {
+				if tClass.InstanceOf(traversable) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if target.Type() == phpv.ZtObject && target.ClassName() == "iterable" {
+		// target is iterable, h must be array or Traversable to satisfy
+		if h.Type() == phpv.ZtArray {
+			return true
+		}
+		if h.Type() == phpv.ZtObject && (h.ClassName() == "iterable" || h.ClassName().ToLower() == "traversable") {
+			return true
+		}
+		// h could be a class that implements Traversable
+		if h.Type() == phpv.ZtObject && h.ClassName() != "" && ctx != nil {
+			hClass, err1 := ctx.Global().GetClass(ctx, h.ClassName(), false)
+			traversable, err2 := ctx.Global().GetClass(ctx, "traversable", false)
+			if err1 == nil && err2 == nil && !phpv.IsNilClass(hClass) && !phpv.IsNilClass(traversable) {
+				if hClass.InstanceOf(traversable) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	// "object" type contains any class type and intersection types
+	if h.Type() == phpv.ZtObject && h.ClassName() == "" {
+		// bare "object" contains any object type
+		if target.Type() == phpv.ZtObject {
+			return true
+		}
+		return false
+	}
+
+	// "callable" contains "Closure" (Closure is a subtype of callable)
+	if h.Type() == phpv.ZtObject && h.ClassName() == "callable" {
+		if target.Type() == phpv.ZtObject && target.ClassName().ToLower() == "closure" {
+			return true
+		}
+	}
+	// "Closure" does NOT contain "callable" (callable is wider than Closure)
+	// but "callable" contains any class with __invoke, so "callable" contains "object" in a sense
+	// In variance context: callable is wider, so it "contains" Closure for type checking.
+
+	// Compare single types
+	if h.Type() != target.Type() {
+		return false
+	}
+	// For object types, check class name
+	if h.Type() == phpv.ZtObject {
+		if target.ClassName() == "" {
+			// target is bare "object", any object type satisfies it
+			return true
+		}
+		if h.ClassName() == "" {
+			// h is bare "object", target is a specific class
+			// "object" does not contain a specific class
+			return false
+		}
+		// Direct name comparison first
+		if h.ClassName().ToLower() == target.ClassName().ToLower() {
+			return true
+		}
+		// "callable" contains Closure
+		if h.ClassName() == "callable" && target.ClassName().ToLower() == "closure" {
+			return true
+		}
+		// Check if the class names resolve to the same class (handles class_alias)
+		if ctx != nil {
+			hClass, err1 := ctx.Global().GetClass(ctx, h.ClassName(), false)
+			tClass, err2 := ctx.Global().GetClass(ctx, target.ClassName(), false)
+			if err1 == nil && err2 == nil && !phpv.IsNilClass(hClass) && !phpv.IsNilClass(tClass) {
+				// Same class object means they are aliases of each other
+				if hClass == tClass {
+					return true
+				}
+				// target is a subtype of h: every target value is also an h value,
+				// so h "contains" target.
+				if tClass.InstanceOf(hClass) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	// For bool with "true"/"false" specifiers
+	if h.Type() == phpv.ZtBool {
+		return h.ClassName() == target.ClassName()
+	}
+	return true
+}
+
+// magicParamTypeCompatible checks if a type hint is compatible with the required type
+// for a magic method parameter. The type hint must be exactly the required type, or a
+// union/nullable type that includes the required type.
+func magicParamTypeCompatible(hint *phpv.TypeHint, requiredType string) bool {
+	// Union types: check if any alternative is the required type
+	if len(hint.Union) > 0 {
+		for _, alt := range hint.Union {
+			if magicParamTypeCompatible(alt, requiredType) {
+				return true
+			}
+		}
+		return false
+	}
+	// Nullable: the base type must match
+	switch requiredType {
+	case "string":
+		return hint.Type() == phpv.ZtString || hint.Type() == phpv.ZtMixed
+	case "array":
+		return hint.Type() == phpv.ZtArray || hint.Type() == phpv.ZtMixed
+	}
+	return true
+}
+
+func pluralS(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
+// fatalError writes a fatal error to the output buffer and returns an exit error
+// so execution stops but the error message is properly formatted in PHP style.
+func (c *ZClass) fatalError(ctx phpv.Context, msg string) error {
+	return c.fatalErrorAt(ctx, msg, c.L)
+}
+
+func (c *ZClass) fatalErrorAt(ctx phpv.Context, msg string, loc *phpv.Loc) error {
+	phpErr := &phpv.PhpError{
+		Err:           fmt.Errorf("%s", msg),
+		Code:          phpv.E_ERROR,
+		Loc:           loc,
+		PhpStackTrace: ctx.GetStackTrace(ctx),
+	}
+	ctx.Global().LogError(phpErr)
+	return phpv.ExitError(255)
+}
+
+func (c *ZClass) InstanceOf(parentClass phpv.ZClass) bool {
+	if c == nil || parentClass == nil {
+		return false
+	}
+	if parentClass == c {
+		return true
+	}
+	pc, ok := parentClass.(*ZClass)
+	if !ok {
+		return false
+	}
+	if c.parents != nil {
+		if _, ok := c.parents[pc]; ok {
+			return true
+		}
+	}
+	// Check implementations (interfaces)
+	for _, impl := range c.Implementations {
+		if impl == pc {
+			return true
+		}
+		if impl.InstanceOf(parentClass) {
+			return true
+		}
+	}
+	// Also walk the Extends chain (for built-in classes that aren't Compile'd)
+	if c.Extends != nil {
+		return c.Extends.InstanceOf(parentClass)
+	}
+	return false
+}
+
+func (c *ZClass) Implements(class phpv.ZClass) bool {
+	return c.implementsWithGuard(class, make(map[phpv.ZClass]bool))
+}
+
+func (c *ZClass) implementsWithGuard(class phpv.ZClass, seen map[phpv.ZClass]bool) bool {
+	if c == class {
+		return true
+	}
+	if seen[c] {
+		return false // cycle detected
+	}
+	seen[c] = true
+	for _, intf := range c.Implementations {
+		if intf.implementsWithGuard(class, seen) {
+			return true
+		}
+	}
+	if c.Extends != nil {
+		return c.Extends.implementsWithGuard(class, seen)
+	}
+	return false
+}
+
+// IsCompoundDump marks ZClass as a compound statement (ends with "}").
+func (c *ZClass) IsCompoundDump() {}
+
+// indentDumpWriter wraps an io.Writer and prepends a prefix at each line start.
+type indentDumpWriter struct {
+	w          io.Writer
+	prefix     []byte
+	atLineStart bool
+}
+
+func (iw *indentDumpWriter) Write(p []byte) (int, error) {
+	total := 0
+	for len(p) > 0 {
+		if iw.atLineStart && len(p) > 0 && p[0] != '\n' {
+			if _, err := iw.w.Write(iw.prefix); err != nil {
+				return total, err
+			}
+		}
+		nl := -1
+		for i, b := range p {
+			if b == '\n' {
+				nl = i
+				break
+			}
+		}
+		var chunk []byte
+		if nl < 0 {
+			chunk = p
+			p = nil
+			iw.atLineStart = false
+		} else {
+			chunk = p[:nl+1]
+			p = p[nl+1:]
+			iw.atLineStart = true
+		}
+		n, err := iw.w.Write(chunk)
+		total += n
+		if err != nil {
+			return total, err
+		}
+	}
+	return total, nil
+}
+
+func (c *ZClass) Dump(w io.Writer) error {
+	// Output attributes
+	for _, attr := range c.Attributes {
+		if _, err := fmt.Fprintf(w, "#[%s]\n", attr.ClassName); err != nil {
+			return err
+		}
+	}
+
+	// Build keyword + name + type hint
+	isEnum := c.Type.Has(phpv.ZClassTypeEnum)
+	if isEnum {
+		if c.EnumBackingType != 0 {
+			if _, err := fmt.Fprintf(w, "enum %s: %s {\n", c.Name, c.EnumBackingType.TypeName()); err != nil {
+				return err
+			}
+		} else {
+			if _, err := fmt.Fprintf(w, "enum %s {\n", c.Name); err != nil {
+				return err
+			}
+		}
+	} else {
+		attrStr := c.Attr.String()
+		if attrStr != "" {
+			if _, err := fmt.Fprintf(w, "%s class %s {\n", attrStr, c.Name); err != nil {
+				return err
+			}
+		} else {
+			if _, err := fmt.Fprintf(w, "class %s {\n", c.Name); err != nil {
+				return err
+			}
+		}
+	}
+
+	iw := &indentDumpWriter{w: w, prefix: []byte("    "), atLineStart: true}
+
+	if isEnum {
+		// Output enum cases in declaration order
+		for _, k := range c.ConstOrder {
+			cc := c.Const[k]
+			if cc == nil {
+				continue
+			}
+			// Determine if this is an enum case constant
+			isCase := false
+			for _, caseName := range c.EnumCases {
+				if caseName == k {
+					isCase = true
+					break
+				}
+			}
+			if !isCase {
+				continue
+			}
+			// Output attributes for this case
+			for _, attr := range cc.Attributes {
+				if _, err := fmt.Fprintf(iw, "#[%s]\n", attr.ClassName); err != nil {
+					return err
+				}
+			}
+			// Try EnumCaseDumper interface for the backing value expression
+			if cd, ok := cc.Value.(*phpv.CompileDelayed); ok {
+				if ecd, ok2 := cd.V.(phpv.EnumCaseDumper); ok2 {
+					if err := ecd.DumpAsEnumCase(iw); err != nil {
+						return err
+					}
+					if _, err := iw.Write([]byte("\n")); err != nil {
+						return err
+					}
+					continue
+				}
+			}
+			// Fallback: just output case name with no value
+			if _, err := fmt.Fprintf(iw, "case %s;\n", k); err != nil {
+				return err
+			}
+		}
+
+		// Output non-case constants
+		for _, k := range c.ConstOrder {
+			cc := c.Const[k]
+			if cc == nil {
+				continue
+			}
+			isCase := false
+			for _, caseName := range c.EnumCases {
+				if caseName == k {
+					isCase = true
+					break
+				}
+			}
+			if isCase {
+				continue
+			}
+			if _, err := fmt.Fprintf(iw, "const %s = ...\n", k); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Output properties (skip for enums — their properties are auto-generated)
+	if !isEnum {
+	for _, p := range c.Props {
+		// Output attributes for this property
+		for _, attr := range p.Attributes {
+			if _, err := fmt.Fprintf(iw, "#[%s]\n", attr.ClassName); err != nil {
+				return err
+			}
+		}
+		var parts []string
+		if p.Modifiers.IsPublic() {
+			parts = append(parts, "public")
+		} else if p.Modifiers.IsProtected() {
+			parts = append(parts, "protected")
+		} else if p.Modifiers.IsPrivate() {
+			parts = append(parts, "private")
+		}
+		// Asymmetric visibility: private(set) / protected(set)
+		if p.SetModifiers != 0 {
+			if p.SetModifiers.IsPrivate() {
+				parts = append(parts, "private(set)")
+			} else if p.SetModifiers.IsProtected() {
+				parts = append(parts, "protected(set)")
+			}
+		}
+		if p.Modifiers.IsStatic() {
+			parts = append(parts, "static")
+		}
+		if p.Modifiers.Has(phpv.ZAttrReadonly) {
+			parts = append(parts, "readonly")
+		}
+		if p.TypeHint != nil {
+			parts = append(parts, p.TypeHint.String())
+		}
+		prefix := strings.Join(parts, " ")
+		if prefix != "" {
+			prefix += " "
+		}
+		if _, err := fmt.Fprintf(iw, "%s$%s;\n", prefix, p.VarName); err != nil {
+			return err
+		}
+	}
+	}
+
+	// Output methods (for both enums and classes)
+	type methodDumper interface {
+		Dump(io.Writer) error
+	}
+	for _, k := range c.MethodOrder {
+		m := c.Methods[k]
+		if m == nil {
+			continue
+		}
+		// Skip synthetic/internal methods that shouldn't appear in source
+		if m.Modifiers.Has(phpv.ZAttrClosure) {
+			continue
+		}
+		// Dump method attributes
+		for _, attr := range m.Attributes {
+			if _, err := fmt.Fprintf(iw, "#[%s]\n", attr.ClassName); err != nil {
+				return err
+			}
+		}
+		// Build method modifiers
+		var mods []string
+		if m.Modifiers.IsPublic() {
+			mods = append(mods, "public")
+		} else if m.Modifiers.IsProtected() {
+			mods = append(mods, "protected")
+		} else if m.Modifiers.IsPrivate() {
+			mods = append(mods, "private")
+		}
+		if m.Modifiers.IsStatic() {
+			mods = append(mods, "static")
+		}
+		if m.Modifiers.Has(phpv.ZAttrAbstract) {
+			mods = append(mods, "abstract")
+		}
+		if m.Modifiers.Has(phpv.ZAttrFinal) {
+			mods = append(mods, "final")
+		}
+		prefix := strings.Join(mods, " ")
+		if prefix != "" {
+			prefix += " "
+		}
+		if d, ok := m.Method.(methodDumper); ok {
+			if _, err := fmt.Fprintf(iw, "%sfunction %s", prefix, m.Name); err != nil {
+				return err
+			}
+			// For ZClosure methods, dump the body using the closure's own Dump
+			// but we need the args/return from the closure, not just the body.
+			// Use a helper to dump just the args + body
+			type argsBodyDumper interface {
+				DumpArgsAndBody(w io.Writer) error
+			}
+			if abd, ok2 := d.(argsBodyDumper); ok2 {
+				if err := abd.DumpArgsAndBody(iw); err != nil {
+					return err
+				}
+			} else {
+				// Just dump the full closure and hope it works
+				if err := d.Dump(iw); err != nil {
+					return err
+				}
+			}
+			if _, err := iw.Write([]byte("\n\n")); err != nil {
+				return err
+			}
+		}
+	}
+
+	_, err := w.Write([]byte("}\n"))
+	return err
+}
+
+func (c *ZClass) BaseName() phpv.ZString {
+	// rturn class name without namespaces/etc
+	pos := strings.LastIndexByte(string(c.Name), '\\')
+	if pos == -1 {
+		return c.Name
+	}
+	return c.Name[pos+1:]
+}
+
+func (c *ZClass) GetStaticProps(ctx phpv.Context) (*phpv.ZHashTable, error) {
+	if c.StaticProps == nil {
+		c.StaticProps = phpv.NewHashTable()
+		// Set compiling class for self::/parent:: resolution in property defaults
+		ctx.Global().SetCompilingClass(c)
+		defer ctx.Global().SetCompilingClass(nil)
+		for _, p := range c.Props {
+			if !p.Modifiers.IsStatic() {
+				continue
+			}
+			if p.Default == nil {
+				c.StaticProps.SetString(p.VarName, phpv.ZNULL.ZVal())
+				continue
+			}
+			// Resolve CompileDelayed defaults lazily
+			if cd, ok := p.Default.(*phpv.CompileDelayed); ok {
+				z, err := cd.Run(ctx)
+				if err != nil {
+					return nil, err
+				}
+				p.Default = z.Value()
+			}
+			c.StaticProps.SetString(p.VarName, p.Default.ZVal())
+		}
+	}
+	return c.StaticProps, nil
+}
+
+// FindStaticProp looks up a static property by name in the class hierarchy,
+// walking up through parent classes if the property is not found locally.
+// Returns the hash table containing the property and true if found.
+func (c *ZClass) FindStaticProp(ctx phpv.Context, name phpv.ZString) (*phpv.ZHashTable, bool, error) {
+	for cur := c; cur != nil; cur = cur.Extends {
+		p, err := cur.GetStaticProps(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		if p.HasString(name) {
+			return p, true, nil
+		}
+	}
+	return nil, false, nil
+}
+
+// FindDeclaredProp walks the class hierarchy to find a declared property by name.
+func (c *ZClass) FindDeclaredProp(name phpv.ZString) *phpv.ZClassProp {
+	for cur := c; cur != nil; cur = cur.Extends {
+		for _, prop := range cur.Props {
+			if prop.VarName == name {
+				return prop
+			}
+		}
+	}
+	return nil
+}
+
+// IsStaticPropAccessible checks whether the calling context has visibility
+// access to a static property on the given class. Returns true when the
+// property is public, when no declaration is found (the caller will handle
+// the "undeclared" error separately), or when the caller's class satisfies
+// the private/protected rules.
+func IsStaticPropAccessible(ctx phpv.Context, c *ZClass, name phpv.ZString) bool {
+	for cur := c; cur != nil; cur = cur.Extends {
+		for _, p := range cur.Props {
+			if p.VarName == name && p.Modifiers.IsStatic() {
+				if p.Modifiers.IsPrivate() {
+					callerClass := ctx.Class()
+					if callerClass == nil || callerClass.GetName() != cur.GetName() {
+						return false
+					}
+				} else if p.Modifiers.IsProtected() {
+					callerClass := ctx.Class()
+					if callerClass == nil || (!callerClass.InstanceOf(cur) && !cur.InstanceOf(callerClass)) {
+						return false
+					}
+				}
+				return true
+			}
+		}
+	}
+	return true
+}
+
+// CheckStaticPropVisibility checks if a static property is accessible from
+// the current context. Returns an error message string if inaccessible,
+// or an empty string if accessible.
+func CheckStaticPropVisibility(ctx phpv.Context, c *ZClass, name phpv.ZString) string {
+	for cur := c; cur != nil; cur = cur.Extends {
+		for _, p := range cur.Props {
+			if p.VarName == name && p.Modifiers.IsStatic() {
+				if p.Modifiers.IsPrivate() {
+					callerClass := ctx.Class()
+					if callerClass == nil || callerClass.GetName() != cur.GetName() {
+						return fmt.Sprintf("Cannot access private property %s::$%s", c.GetName(), name)
+					}
+				} else if p.Modifiers.IsProtected() {
+					callerClass := ctx.Class()
+					if callerClass == nil || (!callerClass.InstanceOf(cur) && !cur.InstanceOf(callerClass)) {
+						return fmt.Sprintf("Cannot access protected property %s::$%s", c.GetName(), name)
+					}
+				}
+				return ""
+			}
+		}
+	}
+	return ""
+}
+
+// CheckStaticPropSetVisibility checks asymmetric set visibility for static properties.
+// Returns an error message string if the set visibility is violated, empty string otherwise.
+func CheckStaticPropSetVisibility(ctx phpv.Context, c *ZClass, name phpv.ZString) string {
+	for cur := c; cur != nil; cur = cur.Extends {
+		for _, p := range cur.Props {
+			if p.VarName == name && p.Modifiers.IsStatic() {
+				if p.SetModifiers == 0 {
+					return "" // no asymmetric visibility
+				}
+				callerClass := ctx.Class()
+				if p.SetModifiers.IsPrivate() {
+					if callerClass != nil && callerClass.GetName() == cur.GetName() {
+						return ""
+					}
+					return fmt.Sprintf("Cannot modify private(set) property %s::$%s from %s",
+						cur.GetName(), name, ScopeName(callerClass))
+				}
+				if p.SetModifiers.IsProtected() {
+					if callerClass != nil && (callerClass.InstanceOf(cur) || cur.InstanceOf(callerClass)) {
+						return ""
+					}
+					return fmt.Sprintf("Cannot modify protected(set) property %s::$%s from %s",
+						cur.GetName(), name, ScopeName(callerClass))
+				}
+				return ""
+			}
+		}
+	}
+	return ""
+}
+
+// CheckStaticPropIndirectSetVisibility checks asymmetric set visibility for indirect
+// modification of static properties (++, +=, .=, [], &$ref, etc.).
+// Returns an error message string if violated, empty string otherwise.
+func CheckStaticPropIndirectSetVisibility(ctx phpv.Context, c *ZClass, name phpv.ZString) string {
+	for cur := c; cur != nil; cur = cur.Extends {
+		for _, p := range cur.Props {
+			if p.VarName == name && p.Modifiers.IsStatic() {
+				if p.SetModifiers == 0 {
+					return ""
+				}
+				callerClass := ctx.Class()
+				if p.SetModifiers.IsPrivate() {
+					if callerClass != nil && callerClass.GetName() == cur.GetName() {
+						return ""
+					}
+					return fmt.Sprintf("Cannot indirectly modify private(set) property %s::$%s from %s",
+						cur.GetName(), name, ScopeName(callerClass))
+				}
+				if p.SetModifiers.IsProtected() {
+					if callerClass != nil && (callerClass.InstanceOf(cur) || cur.InstanceOf(callerClass)) {
+						return ""
+					}
+					return fmt.Sprintf("Cannot indirectly modify protected(set) property %s::$%s from %s",
+						cur.GetName(), name, ScopeName(callerClass))
+				}
+				return ""
+			}
+		}
+	}
+	return ""
+}
+
+// ResolveConstants resolves any remaining CompileDelayed constants in the class
+// and its parent classes. Called when the class is first instantiated.
+func (c *ZClass) ResolveConstants(ctx phpv.Context) error {
+	for cur := c; cur != nil; cur = cur.Extends {
+		ctx.Global().SetCompilingClass(cur)
+		for _, k := range cur.ConstOrder {
+			cc := cur.Const[k]
+			if cc == nil {
+				continue
+			}
+			if r, ok := cc.Value.(*phpv.CompileDelayed); ok {
+				z, err := r.Run(ctx)
+				if err != nil {
+					ctx.Global().SetCompilingClass(nil)
+					return err
+				}
+				cur.Const[k].Value = z.Value()
+			}
+		}
+	}
+	ctx.Global().SetCompilingClass(nil)
+	return nil
+}
+
+// AddConstantExpressionFrame prepends a [constant expression]() frame to an
+// exception's stack trace, matching PHP's behavior for errors during class
+// constant expression evaluation. Uses ctx.Loc() for the frame location.
+func AddConstantExpressionFrame(ex *phperr.PhpThrow, ctx phpv.Context) {
+	AddConstantExpressionFrameAt(ex, ctx.Loc())
+}
+
+// AddConstantExpressionFrameAt prepends a [constant expression]() frame at
+// the specified location. This variant is used when the caller's location
+// needs to be captured before constant expression evaluation (which may
+// change ctx.Loc() to the definition file).
+func AddConstantExpressionFrameAt(ex *phperr.PhpThrow, loc *phpv.Loc) {
+	filename := ""
+	line := 0
+	if loc != nil {
+		filename = loc.Filename
+		line = loc.Line
+	}
+
+	syntheticFrame := &phpv.StackTraceEntry{
+		FuncName: "[constant expression]",
+		Filename: filename,
+		Line:     line,
+	}
+
+	// Walk the class hierarchy to find the trace
+	cls := ex.Obj.GetClass()
+	for cls != nil {
+		if opaque := ex.Obj.GetOpaque(cls); opaque != nil {
+			if trace, ok := opaque.([]*phpv.StackTraceEntry); ok {
+				newTrace := make([]*phpv.StackTraceEntry, 0, len(trace)+1)
+				newTrace = append(newTrace, syntheticFrame)
+				newTrace = append(newTrace, trace...)
+				ex.Obj.SetOpaque(cls, newTrace)
+				// Also update Exception opaque if different
+				if cls != Exception {
+					ex.Obj.SetOpaque(Exception, newTrace)
+				}
+				return
+			}
+		}
+		cls = cls.GetParent()
+	}
+
+	// No existing trace found (e.g., error at global scope with nil trace).
+	// Create a new trace with just the synthetic frame.
+	newTrace := []*phpv.StackTraceEntry{syntheticFrame}
+	ex.Obj.SetOpaque(Exception, newTrace)
+	ex.Obj.SetOpaque(ex.Obj.GetClass(), newTrace)
+}
+
+func (c *ZClass) GetProp(name phpv.ZString) (*phpv.ZClassProp, bool) {
+	// Handle mangled private property names: \0ClassName\0propName
+	if len(name) > 0 && name[0] == 0 {
+		// Extract class name and property name
+		end := strings.IndexByte(string(name[1:]), 0)
+		if end > 0 {
+			className := name[1 : end+1]
+			propName := name[end+2:]
+			// Find the class and look for the private property
+			for cur := c; cur != nil; cur = cur.Extends {
+				if cur.Name == className {
+					for _, prop := range cur.Props {
+						if prop.VarName == propName {
+							return prop, true
+						}
+					}
+				}
+			}
+		}
+		return nil, false
+	}
+	// Walk class hierarchy for unmangled names
+	for cur := c; cur != nil; cur = cur.Extends {
+		for _, prop := range cur.Props {
+			if prop.VarName == name {
+				return prop, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func (c *ZClass) GetMethod(name phpv.ZString) (*phpv.ZClassMethod, bool) {
+	name = name.ToLower()
+	// Search this class and all parent classes
+	for cls := c; cls != nil; cls = cls.Extends {
+		if r, ok := cls.Methods[name]; ok {
+			return r, true
+		}
+	}
+	return nil, false
+}
+
+func (c *ZClass) GetMethods() map[phpv.ZString]*phpv.ZClassMethod {
+	return c.Methods
+}
+
+// GetMethodsOrdered returns methods in PHP declaration order:
+// the class's own methods first (in MethodOrder), then inherited methods
+// from parent, grandparent, etc.
+func (c *ZClass) GetMethodsOrdered() []*phpv.ZClassMethod {
+	var result []*phpv.ZClassMethod
+	seen := make(map[phpv.ZString]bool)
+
+	// Walk from this class up to ancestors
+	for cur := c; cur != nil; cur = cur.Extends {
+		// Use MethodOrder if available (compilation order)
+		if len(cur.MethodOrder) > 0 {
+			for _, name := range cur.MethodOrder {
+				nameLower := name.ToLower()
+				if seen[nameLower] {
+					continue
+				}
+				if m, ok := cur.Methods[nameLower]; ok {
+					// Only include if this class actually declares this method
+					if m.Class == nil || m.Class.GetName() == cur.GetName() {
+						seen[nameLower] = true
+						result = append(result, m)
+					}
+				}
+			}
+		}
+		// Also check methods not in MethodOrder (e.g., builtin methods, trait methods)
+		for name, m := range cur.Methods {
+			if seen[name] {
+				continue
+			}
+			if m.Class == nil || m.Class.GetName() == cur.GetName() {
+				seen[name] = true
+				result = append(result, m)
+			}
+		}
+	}
+	return result
+}
+
+func (c *ZClass) GetType() phpv.ZClassType {
+	return c.Type
+}
+
+func (c *ZClass) Handlers() *phpv.ZClassHandlers {
+	return c.H
+}
+
+func (c *ZClass) GetParent() phpv.ZClass {
+	if c == nil || c.Extends == nil {
+		return nil
+	}
+	return c.Extends
+}
+
+// visibilityLevel returns 0 for public, 1 for protected, 2 for private
+func visibilityLevel(m phpv.ZObjectAttr) int {
+	if m.IsPrivate() {
+		return 2
+	}
+	if m.IsProtected() {
+		return 1
+	}
+	return 0
+}
+
+func (c *ZClass) NextInstanceID() int {
+	c.nextIntanceID++
+	id := c.nextIntanceID
+	return id
+}
+
+// arePropertyDefaultsCompatible checks whether two property default values are
+// compatible for trait composition. PHP considers properties incompatible if they
+// have different default values (strict identity check, not loose equality).
+func arePropertyDefaultsCompatible(ctx phpv.Context, a, b phpv.Val) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if (a == nil) != (b == nil) {
+		return false
+	}
+
+	// Resolve CompileDelayed values
+	aResolved := resolveDefault(ctx, a)
+	bResolved := resolveDefault(ctx, b)
+
+	if aResolved == nil && bResolved == nil {
+		return true
+	}
+	if (aResolved == nil) != (bResolved == nil) {
+		return false
+	}
+
+	// Compare resolved values: must be identical type and value
+	aVal := aResolved.Value()
+	bVal := bResolved.Value()
+	if aVal == nil && bVal == nil {
+		return true
+	}
+	if (aVal == nil) != (bVal == nil) {
+		return false
+	}
+	if aVal.GetType() != bVal.GetType() {
+		return false
+	}
+
+	// Compare by string representation for the same type
+	switch av := aVal.(type) {
+	case phpv.ZBool:
+		bv, ok := bVal.(phpv.ZBool)
+		return ok && av == bv
+	case phpv.ZInt:
+		bv, ok := bVal.(phpv.ZInt)
+		return ok && av == bv
+	case phpv.ZFloat:
+		bv, ok := bVal.(phpv.ZFloat)
+		return ok && av == bv
+	case phpv.ZString:
+		bv, ok := bVal.(phpv.ZString)
+		return ok && av == bv
+	case phpv.ZNull:
+		_, ok := bVal.(phpv.ZNull)
+		return ok
+	default:
+		// For complex types (arrays, objects), fall back to string comparison
+		return fmt.Sprintf("%v", aVal) == fmt.Sprintf("%v", bVal)
+	}
+}
+
+func resolveDefault(ctx phpv.Context, v phpv.Val) *phpv.ZVal {
+	if v == nil {
+		return nil
+	}
+	if cd, ok := v.(*phpv.CompileDelayed); ok {
+		z, err := cd.Run(ctx)
+		if err != nil {
+			return nil
+		}
+		return z
+	}
+	if zv, ok := v.(*phpv.ZVal); ok {
+		return zv
+	}
+	return phpv.NewZVal(v)
+}

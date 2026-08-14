@@ -1,0 +1,59 @@
+package reflection
+
+import (
+	"github.com/KarpelesLab/goro/core/phpobj"
+	"github.com/KarpelesLab/goro/core/phpv"
+)
+
+// Reflection is the static utility class (Reflection::getModifierNames, etc.)
+var ReflectionStatic *phpobj.ZClass
+
+func initReflectionStatic() {
+	ReflectionStatic = &phpobj.ZClass{
+		Name: "Reflection",
+		Methods: map[phpv.ZString]*phpv.ZClassMethod{
+			"getmodifiernames": {Name: "getModifierNames", Modifiers: phpv.ZAttrPublic | phpv.ZAttrStatic, Method: phpobj.NativeMethod(reflectionGetModifierNames)},
+		},
+	}
+}
+
+func reflectionGetModifierNames(ctx phpv.Context, o *phpobj.ZObject, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	if len(args) < 1 {
+		return phpv.NewZArray().ZVal(), nil
+	}
+	modifiers := int64(args[0].AsInt(ctx))
+	arr := phpv.NewZArray()
+
+	if modifiers&ReflectionMethodIS_ABSTRACT != 0 {
+		arr.OffsetSet(ctx, nil, phpv.ZString("abstract").ZVal())
+	}
+	if modifiers&ReflectionMethodIS_FINAL != 0 {
+		arr.OffsetSet(ctx, nil, phpv.ZString("final").ZVal())
+	}
+	if modifiers&ReflectionMethodIS_PUBLIC != 0 {
+		arr.OffsetSet(ctx, nil, phpv.ZString("public").ZVal())
+	}
+	if modifiers&ReflectionMethodIS_PROTECTED != 0 {
+		arr.OffsetSet(ctx, nil, phpv.ZString("protected").ZVal())
+	}
+	if modifiers&ReflectionMethodIS_PRIVATE != 0 {
+		arr.OffsetSet(ctx, nil, phpv.ZString("private").ZVal())
+	}
+	if modifiers&ReflectionMethodIS_STATIC != 0 {
+		arr.OffsetSet(ctx, nil, phpv.ZString("static").ZVal())
+	}
+	if modifiers&128 != 0 || modifiers&65536 != 0 { // IS_READONLY (property=128, class=65536)
+		arr.OffsetSet(ctx, nil, phpv.ZString("readonly").ZVal())
+	}
+	if modifiers&512 != 0 { // IS_VIRTUAL
+		arr.OffsetSet(ctx, nil, phpv.ZString("virtual").ZVal())
+	}
+	if modifiers&256 != 0 { // IS_PROTECTED_SET
+		arr.OffsetSet(ctx, nil, phpv.ZString("protected(set)").ZVal())
+	}
+	if modifiers&1024 != 0 { // IS_PRIVATE_SET
+		arr.OffsetSet(ctx, nil, phpv.ZString("private(set)").ZVal())
+	}
+
+	return arr.ZVal(), nil
+}

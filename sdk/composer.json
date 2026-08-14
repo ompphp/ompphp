@@ -1,0 +1,24 @@
+{
+  "name": "ompphp/sdk",
+  "description": "PHP SDK for open.mp gamemodes running on ompphp",
+  "type": "library",
+  "license": "MPL-2.0",
+  "homepage": "https://github.com/ompphp/ompphp",
+  "keywords": ["open.mp", "omp", "samp", "gamemode"],
+  "support": { "issues": "https://github.com/ompphp/ompphp/issues" },
+  "require": { "php": ">=8.2" },
+  "require-dev": {
+    "psr/log": "^3.0",
+    "symfony/string": "^7.3"
+  },
+  "autoload": {
+    "psr-4": { "Omp\\": "src/" },
+    "files": ["src/Internal/functions.php", "src/Internal/api_generated.php"]
+  },
+  "scripts": {
+    "test": [
+      "php tests/run.php",
+      "php tests/incompatible.php"
+    ]
+  }
+}

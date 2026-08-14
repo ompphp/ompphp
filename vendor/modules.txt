@@ -1,0 +1,69 @@
+# github.com/KarpelesLab/anyhash v0.1.5
+## explicit; go 1.25.0
+github.com/KarpelesLab/anyhash
+# github.com/KarpelesLab/gopcre2 v0.1.0
+## explicit; go 1.25.3
+github.com/KarpelesLab/gopcre2
+# github.com/KarpelesLab/goro v0.0.0-20260526055329-6291adc7a44a
+## explicit; go 1.25.3
+github.com/KarpelesLab/goro/core
+github.com/KarpelesLab/goro/core/compiler
+github.com/KarpelesLab/goro/core/ini
+github.com/KarpelesLab/goro/core/locale
+github.com/KarpelesLab/goro/core/logopt
+github.com/KarpelesLab/goro/core/phpctx
+github.com/KarpelesLab/goro/core/phperr
+github.com/KarpelesLab/goro/core/phpobj
+github.com/KarpelesLab/goro/core/phpv
+github.com/KarpelesLab/goro/core/random
+github.com/KarpelesLab/goro/core/stream
+github.com/KarpelesLab/goro/core/tokenizer
+github.com/KarpelesLab/goro/core/util
+github.com/KarpelesLab/goro/core/vm
+github.com/KarpelesLab/goro/core/vm/vmcompiler
+github.com/KarpelesLab/goro/ext/ctype
+github.com/KarpelesLab/goro/ext/date
+github.com/KarpelesLab/goro/ext/hash
+github.com/KarpelesLab/goro/ext/json
+github.com/KarpelesLab/goro/ext/mbstring
+github.com/KarpelesLab/goro/ext/pcre
+github.com/KarpelesLab/goro/ext/reflection
+github.com/KarpelesLab/goro/ext/spl
+github.com/KarpelesLab/goro/ext/standard
+# github.com/KarpelesLab/gotz v0.1.2
+## explicit; go 1.25.3
+github.com/KarpelesLab/gotz
+# github.com/KarpelesLab/strftime v1.0.1
+## explicit; go 1.21
+github.com/KarpelesLab/strftime
+# github.com/KarpelesLab/strtotime v0.1.14
+## explicit; go 1.25.3
+github.com/KarpelesLab/strtotime
+# github.com/goark/mt v1.0.0
+## explicit; go 1.21
+github.com/goark/mt
+github.com/goark/mt/mt19937
+# golang.org/x/crypto v0.46.0
+## explicit; go 1.24.0
+golang.org/x/crypto/bcrypt
+golang.org/x/crypto/blowfish
+golang.org/x/crypto/hkdf
+golang.org/x/crypto/pbkdf2
+# golang.org/x/text v0.36.0
+## explicit; go 1.25.0
+golang.org/x/text/encoding
+golang.org/x/text/encoding/charmap
+golang.org/x/text/encoding/internal
+golang.org/x/text/encoding/internal/identifier
+golang.org/x/text/encoding/japanese
+golang.org/x/text/encoding/korean
+golang.org/x/text/encoding/simplifiedchinese
+golang.org/x/text/encoding/traditionalchinese
+golang.org/x/text/encoding/unicode
+golang.org/x/text/internal/language
+golang.org/x/text/internal/language/compact
+golang.org/x/text/internal/tag
+golang.org/x/text/internal/utf8internal
+golang.org/x/text/language
+golang.org/x/text/runes
+golang.org/x/text/transform

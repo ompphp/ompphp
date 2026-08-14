@@ -1,0 +1,34 @@
+package compiler
+
+import (
+	"io"
+
+	"github.com/KarpelesLab/goro/core/phpv"
+)
+
+type runParentheses struct {
+	r phpv.Runnable
+}
+
+func (r *runParentheses) Dump(w io.Writer) error {
+	_, err := w.Write([]byte{'('})
+	if err != nil {
+		return err
+	}
+	err = r.r.Dump(w)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write([]byte{')'})
+	return err
+}
+
+func (r *runParentheses) Run(ctx phpv.Context) (*phpv.ZVal, error) {
+	return r.r.Run(ctx)
+}
+
+// IsParenthesizedExpression marks parenthesized expressions. When passed to
+// a by-reference parameter, these produce a Notice ("Only variables should
+// be passed by reference") rather than a Fatal Error.
+func (r *runParentheses) IsParenthesizedExpression() {}
+

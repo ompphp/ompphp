@@ -1,0 +1,30 @@
+package phpctx
+
+import (
+	"io"
+
+	"github.com/KarpelesLab/goro/core/phpv"
+)
+
+type BufContext struct {
+	phpv.Context
+	b io.Writer
+}
+
+func NewBufContext(ctx phpv.Context, b io.Writer) phpv.Context {
+	return &BufContext{ctx, b}
+}
+
+func (b *BufContext) Write(d []byte) (int, error) {
+	if b.b == nil {
+		return len(d), nil
+	}
+	return b.b.Write(d)
+}
+
+func (b *BufContext) Parent(n int) phpv.Context {
+	if n <= 1 {
+		return b.Context
+	}
+	return b.Context.Parent(n - 1)
+}

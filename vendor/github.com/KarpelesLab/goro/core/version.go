@@ -1,0 +1,43 @@
+package core
+
+import (
+	"github.com/KarpelesLab/goro/core/phpctx"
+	"github.com/KarpelesLab/goro/core/phpv"
+)
+
+// php targetted version
+const VERSION = "8.2.0"
+
+// > const
+const (
+	PHP_VERSION         = phpv.ZString(VERSION) // version of PHP
+	PHP_MAJOR_VERSION   = phpv.ZInt(8)
+	PHP_MINOR_VERSION   = phpv.ZInt(2)
+	PHP_RELEASE_VERSION = phpv.ZInt(0)
+	PHP_EXTRA_VERSION   = phpv.ZString("")
+	PHP_VERSION_ID      = phpv.ZInt(80200)
+)
+
+// > func string phpversion ([ string $extension ] )
+func stdFuncPhpVersion(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	var ext *string
+	_, err := Expand(ctx, args, &ext)
+	if err != nil {
+		return nil, err
+	}
+
+	if ext != nil {
+		e := phpctx.GetExt(*ext)
+		if e == nil {
+			return phpv.ZBool(false).ZVal(), nil
+		}
+		return phpv.ZString(e.Version).ZVal(), nil
+	}
+
+	return phpv.ZString(VERSION).ZVal(), nil
+}
+
+// > func string zend_version ( void )
+func stdFuncZendVersion(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	return phpv.ZString("3.2.0").ZVal(), nil
+}

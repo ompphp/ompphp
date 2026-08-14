@@ -1,0 +1,534 @@
+package phpctx
+
+import (
+	"sync"
+
+	"github.com/KarpelesLab/goro/core/logopt"
+	"github.com/KarpelesLab/goro/core/phperr"
+	"github.com/KarpelesLab/goro/core/phpv"
+)
+
+// Pool for FuncContext to reduce allocations during function calls
+var funcContextPool = sync.Pool{
+	New: func() any {
+		return &FuncContext{
+			h: phpv.NewHashTable(),
+		}
+	},
+}
+
+// GetFuncContext retrieves a FuncContext from the pool
+func GetFuncContext() *FuncContext {
+	return funcContextPool.Get().(*FuncContext)
+}
+
+// Release returns the FuncContext to the pool after clearing it.
+// It returns an error if any destructor triggered during scope cleanup
+// throws an exception.
+func (c *FuncContext) Release() error {
+	// Clean up foreach-by-reference iterators. In PHP, when the loop
+	// variable goes out of scope (function return), the refcount on the
+	// last iterated element drops to 1 and the reference wrapper is
+	// removed. Since Goro has no refcounting, we call CleanupRef() on
+	// each registered iterator to unwrap the last element's reference.
+	for _, cleanup := range c.foreachRefCleanups {
+		cleanup()
+	}
+	c.foreachRefCleanups = c.foreachRefCleanups[:0]
+
+	// DecRef all objects in local variables before clearing the scope.
+	// This ensures reference counts are properly decremented when leaving
+	// function scope. We use DecRefImplicit because scope exit in PHP
+	// allows destructors to run regardless of visibility.
+	var releaseErr error
+	if c.Context != nil {
+		// Restore the global location to this function's call site before
+		// running scope-exit destructors. In PHP, if a destructor triggered
+		// during scope cleanup creates an exception, the stack trace should
+		// show the original call site (e.g., the line that created the
+		// outer object), not the last-executed line inside the function.
+		// Skip for internal calls (loc is "Unknown:0") to avoid clobbering
+		// the global location tracker.
+		if c.loc != nil && !c.isInternal {
+			c.Context.Tick(c.Context, c.loc)
+		}
+		// Iterate raw — we only inspect to DecRef, never mutate or
+		// share. ZIterator.Current() Dups the value, and Dup on an
+		// array Dups the underlying ZHashTable (every subsequent
+		// SetString on it then doCopy's). Skipping that pays back
+		// massively when the FuncContext holds a `global $array`
+		// (e.g. bug60598 — 10k __destruct frames each Dup'd the
+		// shared $containers ZHashTable, dominating runtime).
+		for _, v := range c.h.NewIterator().IterateRaw(c.Context) {
+			if v != nil && v.GetType() == phpv.ZtObject {
+				if zobj, ok := v.Value().(phpv.ZObject); ok {
+					// Call HandleDecRef if the class defines it (e.g. Closure releasing captured $this)
+					if cls := zobj.GetClass(); cls != nil {
+						if h := cls.Handlers(); h != nil && h.HandleDecRef != nil {
+							h.HandleDecRef(c.Context, zobj)
+						}
+					}
+				}
+				if obj, ok := v.Value().(interface {
+					DecRefImplicit(phpv.Context) error
+				}); ok {
+					if derr := obj.DecRefImplicit(c.Context); derr != nil {
+						// Collect the last destructor error; in PHP, nested
+						// destructor exceptions are chained via "previous".
+						releaseErr = derr
+					}
+				}
+			}
+		}
+	}
+
+	c.Context = nil
+	c.h.Empty()
+	c.this = nil
+	c.Args = c.Args[:0]
+	c.c = nil
+	c.loc = nil
+	c.class = nil
+	c.calledClass = nil
+	c.methodType = ""
+	c.isInternal = false
+	c.suppressCalledIn = false
+	c.useParentScope = false
+	c.closureStaticVarKey = 0
+	funcContextPool.Put(c)
+	return releaseErr
+}
+
+type FuncContext struct {
+	phpv.Context
+
+	h    *phpv.ZHashTable
+	this phpv.ZObject
+	Args []*phpv.ZVal
+	c    phpv.Callable // called object (this function itself)
+
+	loc *phpv.Loc
+
+	class       phpv.ZClass
+	calledClass phpv.ZClass // for late static binding (static::class)
+	methodType  string
+
+	isInternal       bool // true when called from internal code (e.g., output buffer callbacks)
+	suppressCalledIn bool // true when "called in" should not be appended to type error messages
+	useParentScope   bool // true for eval() - delegate variable access to parent context
+
+	foreachRefCleanups []func() // cleanup functions for foreach-by-reference iterators
+
+	// closureStaticVarKey is the unique identifier for the closure instance currently
+	// being executed. Non-zero when running inside a closure (not a class method or
+	// named function). Used by runStaticVar to provide per-closure-instance static vars.
+	closureStaticVarKey uintptr
+}
+
+// RegisterForeachRefCleanup registers a cleanup function to be called when
+// this function context is released, for cleaning up foreach-by-reference
+// iterator references.
+func (c *FuncContext) RegisterForeachRefCleanup(fn func()) {
+	c.foreachRefCleanups = append(c.foreachRefCleanups, fn)
+}
+
+// ClosureStaticVarKey returns the per-closure-instance key for static variable storage.
+// This implements phpv.ClosureStaticVarKeyProvider.
+// Returns 0 when not running inside a closure instance (e.g. named functions, class methods).
+func (c *FuncContext) ClosureStaticVarKey() uintptr {
+	return c.closureStaticVarKey
+}
+
+// SetUseParentScope sets whether this FuncContext should delegate variable
+// access (OffsetGet/OffsetSet/OffsetCheck/OffsetUnset/OffsetExists) to the
+// parent context. Used by eval() so that variables are accessible in the
+// calling scope while the eval FuncContext remains visible in stack traces.
+func (c *FuncContext) SetUseParentScope(v bool) {
+	c.useParentScope = v
+}
+
+func (c *FuncContext) AsVal(ctx phpv.Context, t phpv.ZType) (phpv.Val, error) {
+	a := c.h.Array()
+	return a.AsVal(ctx, t)
+}
+
+func (c *FuncContext) GetType() phpv.ZType {
+	return phpv.ZtArray
+}
+
+func (c *FuncContext) ZVal() *phpv.ZVal {
+	return c.ZVal().Ref()
+}
+
+func (c *FuncContext) Func() phpv.FuncContext {
+	return c
+}
+
+func (c *FuncContext) Callable() phpv.Callable {
+	return c.c
+}
+
+func (c *FuncContext) This() phpv.ZObject {
+	if c.this == nil && c.useParentScope {
+		return c.Context.This()
+	}
+	return c.this
+}
+
+// Loc returns the current source-code location. It walks up the
+// parent-context chain (which bottoms out at the Global, whose Loc
+// tracks the live execution position via Tick).
+//
+// The walk is iterative with a depth cap: a cap-exceeding chain means
+// the parent pointers form a cycle (a FuncContext-pool aliasing bug).
+// Rather than overflowing the goroutine stack, Loc bails to this
+// frame's own call-site loc. The cap is well above PHP's 4096-frame
+// nesting limit so legitimate deep recursion is unaffected.
+func (c *FuncContext) Loc() *phpv.Loc {
+	var cur phpv.Context = c
+	for i := 0; i < 1<<16; i++ {
+		fc, ok := cur.(*FuncContext)
+		if !ok {
+			return cur.Loc()
+		}
+		if fc.Context == nil {
+			return fc.loc
+		}
+		cur = fc.Context
+	}
+	// Cycle in the context chain — bail with this frame's call-site loc.
+	return c.loc
+}
+
+// CallSiteLoc returns the frozen location (file/line) from which this function
+// was called, as set during callZValImpl setup. This differs from Loc() which
+// returns the current execution position in the parent context.
+// Implements phpv.CallSiteLocProvider.
+func (c *FuncContext) CallSiteLoc() *phpv.Loc {
+	return c.loc
+}
+
+// InternalLoc returns the "internal" location (Unknown:0) for internal calls,
+// or nil for regular calls. Used by deprecation/warning logic to report the
+// correct location for engine-invoked callbacks.
+func (c *FuncContext) InternalLoc() *phpv.Loc {
+	if c.isInternal && c.loc != nil {
+		return c.loc
+	}
+	return nil
+}
+
+// SuppressCalledIn reports whether the "called in X on line Y" suffix should be
+// suppressed from argument-count and type error messages for this call.
+func (c *FuncContext) SuppressCalledIn() bool {
+	return c.suppressCalledIn
+}
+
+func (c *FuncContext) Class() phpv.ZClass {
+	return c.class
+}
+
+func (c *FuncContext) CalledClass() phpv.ZClass {
+	if c.calledClass != nil {
+		return c.calledClass
+	}
+	return c.class
+}
+
+func (c *FuncContext) OffsetExists(ctx phpv.Context, name phpv.Val) (bool, error) {
+	if c.useParentScope {
+		return c.Context.OffsetExists(ctx, name)
+	}
+	nameStr, ok := name.(phpv.ZString)
+	if !ok {
+		var err error
+		name, err = name.AsVal(ctx, phpv.ZtString)
+		if err != nil {
+			return false, err
+		}
+		nameStr = name.(phpv.ZString)
+	}
+
+	switch nameStr {
+	case "this":
+		if c.this == nil {
+			return false, nil
+		}
+		return true, nil
+	case "GLOBALS":
+		return true, nil
+	case "_SERVER", "_GET", "_POST", "_FILES", "_COOKIE", "_SESSION", "_REQUEST", "_ENV":
+		return c.Global().OffsetExists(ctx, nameStr)
+	}
+	return c.h.HasString(nameStr), nil
+}
+
+func (c *FuncContext) OffsetGet(ctx phpv.Context, name phpv.Val) (*phpv.ZVal, error) {
+	if c.useParentScope {
+		return c.Context.OffsetGet(ctx, name)
+	}
+	nameStr, ok := name.(phpv.ZString)
+	if !ok {
+		var err error
+		name, err = name.AsVal(ctx, phpv.ZtString)
+		if err != nil {
+			return nil, err
+		}
+		nameStr = name.(phpv.ZString)
+	}
+
+	switch nameStr {
+	case "this":
+		if c.this == nil {
+			return nil, nil
+		}
+		return c.this.ZVal(), nil
+	case "GLOBALS", "_SERVER", "_GET", "_POST", "_FILES", "_COOKIE", "_SESSION", "_REQUEST", "_ENV":
+		return c.Global().OffsetGet(ctx, nameStr)
+	}
+	return c.h.GetString(nameStr), nil
+}
+
+func (c *FuncContext) OffsetCheck(ctx phpv.Context, name phpv.Val) (*phpv.ZVal, bool, error) {
+	if c.useParentScope {
+		return c.Context.OffsetCheck(ctx, name)
+	}
+	nameStr, ok := name.(phpv.ZString)
+	if !ok {
+		var err error
+		name, err = name.AsVal(ctx, phpv.ZtString)
+		if err != nil {
+			return nil, false, err
+		}
+		nameStr = name.(phpv.ZString)
+	}
+
+	switch nameStr {
+	case "this":
+		if c.this == nil {
+			return nil, false, nil
+		}
+		return c.this.ZVal(), true, nil
+	case "GLOBALS", "_SERVER", "_GET", "_POST", "_FILES", "_COOKIE", "_SESSION", "_REQUEST", "_ENV":
+		return c.Global().OffsetCheck(ctx, nameStr)
+	}
+
+	v, found := c.h.GetStringB(nameStr)
+	if !found {
+		return nil, false, nil
+	}
+	return v, true, nil
+}
+
+func (c *FuncContext) OffsetSet(ctx phpv.Context, name phpv.Val, v *phpv.ZVal) error {
+	if c.useParentScope {
+		return c.Context.OffsetSet(ctx, name, v)
+	}
+	nameStr, ok := name.(phpv.ZString)
+	if !ok {
+		var err error
+		name, err = name.AsVal(ctx, phpv.ZtString)
+		if err != nil {
+			return err
+		}
+		nameStr = name.(phpv.ZString)
+	}
+
+	switch nameStr {
+	case "this":
+		return ctx.Errorf("Cannot re-assign $this")
+	}
+
+	// Track object references: IncRef new object, DecRef old object.
+	old := c.h.GetString(nameStr)
+	isRef := old != nil && old.IsRef()
+
+	var oldObj interface {
+		DecRef(phpv.Context) error
+	}
+	if old != nil && old.GetType() == phpv.ZtObject {
+		if obj, ok := old.Value().(interface {
+			DecRef(phpv.Context) error
+		}); ok {
+			oldObj = obj
+		}
+	}
+	// Only IncRef for non-reference direct object storage
+	if !isRef && v != nil && v.GetType() == phpv.ZtObject && !v.IsRef() {
+		if obj, ok := v.Value().(interface{ IncRef() }); ok {
+			obj.IncRef()
+		}
+	}
+
+	// If the existing slot has type checkers (typed reference), use SetWithCtx
+	// so that type constraints are enforced when the reference value is updated.
+	if old != nil && old.HasTypeCheckers() && v != nil && !v.IsRef() {
+		if err := old.SetWithCtx(ctx, v); err != nil {
+			return err
+		}
+		if oldObj != nil {
+			return oldObj.DecRef(ctx)
+		}
+		return nil
+	}
+
+	err := c.h.SetString(nameStr, v)
+	if err != nil {
+		return err
+	}
+
+	if oldObj != nil {
+		return oldObj.DecRef(ctx)
+	}
+	return nil
+}
+
+
+func (c *FuncContext) OffsetUnset(ctx phpv.Context, name phpv.Val) error {
+	if c.useParentScope {
+		return c.Context.OffsetUnset(ctx, name)
+	}
+	nameStr, ok := name.(phpv.ZString)
+	if !ok {
+		var err error
+		name, err = name.AsVal(ctx, phpv.ZtString)
+		if err != nil {
+			return err
+		}
+		nameStr = name.(phpv.ZString)
+	}
+
+	switch nameStr {
+	case "this":
+		return ctx.Errorf("Cannot unset $this")
+	}
+	return c.h.UnsetString(nameStr)
+}
+
+func (c *FuncContext) Count(ctx phpv.Context) phpv.ZInt {
+	return c.h.Count()
+}
+
+func (c *FuncContext) NewIterator() phpv.ZIterator {
+	return c.h.NewIterator()
+}
+
+func (ctx *FuncContext) Parent(n int) phpv.Context {
+	if n <= 1 {
+		return ctx.Context
+	} else {
+		return ctx.Context.Parent(n - 1)
+	}
+}
+
+func (ctx *FuncContext) GetFuncName() string {
+	name := ctx.c.Name()
+	if ctx.class != nil && ctx.methodType != "" {
+		// Native methods (e.g. built-in constructors) have an empty Name();
+		// when called as a method they are constructors.
+		if name == "" {
+			name = "__construct"
+		}
+		// PHP uses :: in error messages/warning for both static and instance methods
+		return string(ctx.class.GetName()) + "::" + name
+	}
+	return name
+}
+
+// GetFuncNameForTrace returns the function name using the actual method type (-> or ::) for stack traces
+func (ctx *FuncContext) GetFuncNameForTrace() string {
+	name := ctx.c.Name()
+	if ctx.class != nil && ctx.methodType != "" {
+		if name == "" {
+			name = "__construct"
+		}
+		return string(ctx.class.GetName()) + ctx.methodType + name
+	}
+	return name
+}
+
+func (ctx *FuncContext) Error(err error, t ...phpv.PhpErrorType) error {
+	// If the error is already a catchable exception (PhpThrow), pass it through
+	// directly. This preserves the exception type (e.g., ArgumentCountError,
+	// TypeError) so try/catch can handle it.
+	if _, ok := err.(*phperr.PhpThrow); ok {
+		return err
+	}
+	wrappedErr := ctx.Loc().Error(ctx, err, t...)
+	result := phperr.HandleUserError(ctx, wrappedErr)
+	if result == phperr.ErrHandledByUser {
+		return nil
+	}
+	return result
+}
+
+func (ctx *FuncContext) Errorf(format string, a ...any) error {
+	err := ctx.Loc().Errorf(ctx, phpv.E_ERROR, format, a...)
+	result := phperr.HandleUserError(ctx, err)
+	if result == phperr.ErrHandledByUser {
+		return nil
+	}
+	return result
+}
+
+func (ctx *FuncContext) FuncError(err error, t ...phpv.PhpErrorType) error {
+	// If the error is already a catchable exception (PhpThrow), pass it through
+	// directly. This preserves the exception type (e.g., ArgumentCountError,
+	// TypeError) so try/catch can handle it.
+	if _, ok := err.(*phperr.PhpThrow); ok {
+		return err
+	}
+	wrappedErr := ctx.Loc().Error(ctx, err, t...)
+	wrappedErr.FuncName = ctx.GetFuncName()
+	result := phperr.HandleUserError(ctx, wrappedErr)
+	if result == phperr.ErrHandledByUser {
+		return nil
+	}
+	return result
+}
+func (ctx *FuncContext) FuncErrorf(format string, a ...any) error {
+	err := ctx.Loc().Errorf(ctx, phpv.E_ERROR, format, a...)
+	err.FuncName = ctx.GetFuncName()
+	result := phperr.HandleUserError(ctx, err)
+	if result == phperr.ErrHandledByUser {
+		return nil
+	}
+	return result
+}
+
+func (ctx *FuncContext) Warn(format string, a ...any) error {
+	a = append(a, logopt.ErrType(phpv.E_WARNING))
+	return logWarning(ctx, format, a...)
+}
+
+func (ctx *FuncContext) Notice(format string, a ...any) error {
+	a = append(a, logopt.ErrType(phpv.E_NOTICE))
+	return logWarning(ctx, format, a...)
+}
+
+func (ctx *FuncContext) Deprecated(format string, a ...any) error {
+	a = append(a, logopt.ErrType(phpv.E_DEPRECATED))
+	err := logWarning(ctx, format, a...)
+	if err == nil {
+		ctx.Global().ShownDeprecated(format)
+	}
+	return err
+}
+
+func (ctx *FuncContext) UserDeprecated(format string, a ...any) error {
+	a = append(a, logopt.ErrType(phpv.E_USER_DEPRECATED))
+	return logWarning(ctx, format, a...)
+}
+
+func (ctx *FuncContext) WarnDeprecated() error {
+	funcName := ctx.GetFuncName()
+	if ok := ctx.Global().ShownDeprecated(funcName); ok {
+		err := logWarning(
+			ctx,
+			"The %s() function is deprecated. This message will be suppressed on further calls",
+			funcName, logopt.NoFuncName(true), logopt.ErrType(phpv.E_DEPRECATED),
+		)
+		return err
+	}
+	return nil
+}
