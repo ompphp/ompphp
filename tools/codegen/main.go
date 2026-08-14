@@ -14,6 +14,7 @@ func main() {
 	phpOut := flag.String("php-out", "sdk/src/Internal/api_generated.php", "generated low-level PHP API")
 	publicPHPOut := flag.String("public-php-out", "sdk/src/Api", "generated public PHP API directory")
 	eventOut := flag.String("event-out", "sdk/src/Event/Events.php", "generated PHP event names")
+	eventHandlersOut := flag.String("event-handlers-out", "sdk/src/Event/Handlers.php", "generated typed PHP event registration methods")
 	constantsOut := flag.String("constants-out", "sdk/src/Constant", "generated PHP constants directory")
 	nativeHeader := flag.String("native-header", "cmd/component/native_generated.h", "generated C native adapters")
 	nativeGo := flag.String("native-go", "cmd/component/native_generated.go", "generated Go native dispatch")
@@ -35,6 +36,10 @@ func main() {
 		os.Exit(1)
 	}
 	if err := generateEvents(*eventOut, m); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := generateEventHandlers(*eventHandlersOut, m); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

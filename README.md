@@ -51,14 +51,13 @@ Create `gamemode.php` in the server directory:
 
 require __DIR__ . '/vendor/autoload.php';
 
-use Omp\Event\Events;
+use Omp\Event\Handlers;
 use Omp\Player;
 use Omp\Runtime;
-use Omp\Server;
 
 Runtime::assertCompatible();
 
-Server::on(Events::PLAYER_CONNECT, static function (int $playerId): void {
+Handlers::playerConnect(static function (int $playerId): void {
     (new Player($playerId))->sendMessage('Welcome to the server.');
 });
 ```

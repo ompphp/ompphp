@@ -8,6 +8,7 @@
   "support": { "issues": "https://github.com/ompphp/ompphp/issues" },
   "require": { "php": ">=8.2" },
   "require-dev": {
+    "phpstan/phpstan": "^2.1",
     "psr/log": "^3.0",
     "symfony/string": "^7.3"
   },
@@ -16,6 +17,7 @@
     "files": ["src/Internal/functions.php", "src/Internal/api_generated.php"]
   },
   "scripts": {
+    "analyse": "phpstan analyse --configuration=phpstan.neon --no-progress",
     "test": [
       "php tests/run.php",
       "php tests/incompatible.php"

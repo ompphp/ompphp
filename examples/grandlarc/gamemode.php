@@ -16,9 +16,8 @@ use Omp\Constant\PlayerMarkersMode;
 use Omp\Constant\PlayerState;
 use Omp\Constant\TextDrawFont;
 use Omp\Constant\WeaponID;
-use Omp\Event\Events;
+use Omp\Event\Handlers;
 use Omp\Runtime;
-use Omp\Server;
 
 final class GrandLarceny
 {
@@ -46,21 +45,21 @@ final class GrandLarceny
         $this->createClasses();
         $this->loadStaticVehicles(__DIR__ . '/scriptfiles/vehicles');
 
-        Server::on(Events::PLAYER_CONNECT, function (int $player): void {
+        Handlers::playerConnect(function (int $player): void {
             $this->players[$player] = $this->newPlayerData();
             Player::showGameText($player, '~w~Grand Larceny', 3000, 4);
             Player::sendClientMessage($player, -1, 'Welcome to {88AA88}G{FFFFFF}rand {88AA88}L{FFFFFF}arceny');
         });
 
-        Server::on(Events::PLAYER_DISCONNECT, function (int $player, int $reason): void {
+        Handlers::playerDisconnect(function (int $player, int $reason): void {
             unset($this->players[$player]);
         });
 
-        Server::on(Events::PLAYER_SPAWN, function (int $player): void {
+        Handlers::playerSpawn(function (int $player): void {
             $this->spawnPlayer($player);
         });
 
-        Server::on(Events::PLAYER_DEATH, function (int $player, int $killer, int $reason): void {
+        Handlers::playerDeath(function (int $player, int $killer, int $reason): void {
             $this->ensurePlayer($player);
             $this->players[$player]['selected'] = false;
             $cash = Player::getMoney($player);
@@ -70,7 +69,7 @@ final class GrandLarceny
             Player::resetMoney($player);
         });
 
-        Server::on(Events::PLAYER_REQUEST_CLASS, function (int $player, int $classId): bool {
+        Handlers::playerRequestClass(function (int $player, int $classId): bool {
             if (Player::isNpc($player)) {
                 return true;
             }
@@ -87,7 +86,7 @@ final class GrandLarceny
             return false;
         });
 
-        Server::on(Events::PLAYER_UPDATE, function (int $player): bool {
+        Handlers::playerUpdate(function (int $player): bool {
             if (Player::isNpc($player)) {
                 return true;
             }

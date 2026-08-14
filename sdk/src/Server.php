@@ -6,7 +6,12 @@ namespace Omp;
 
 final class Server
 {
-    /** @param class-string $event */
+    /**
+     * Register a handler for an event name from {@see \Omp\Event\Events}.
+     *
+     * Use the generated methods on {@see \Omp\Event\Handlers} when static
+     * analysis of the handler parameters is needed.
+     */
     public static function on(string $event, callable $handler): void
     {
         \Omp\Internal\register_handler($event, $handler);

@@ -18,7 +18,7 @@ tasks:
     desc: Verify generated bindings are current
     cmds:
       - task: generate
-      - git diff --exit-code -- sdk/src/Internal/api_generated.php sdk/src/Api sdk/src/Event/Events.php sdk/src/Constant cmd/component/native_generated.go cmd/component/native_generated.h cmd/component/events_generated.go cmd/component/events_generated.h
+      - git diff --exit-code -- sdk/src/Internal/api_generated.php sdk/src/Api sdk/src/Event/Events.php sdk/src/Event/Handlers.php sdk/src/Constant cmd/component/native_generated.go cmd/component/native_generated.h cmd/component/events_generated.go cmd/component/events_generated.h
 
   build:
     desc: Build the standalone runtime runner
@@ -64,6 +64,7 @@ tasks:
     deps: [sdk:install]
     cmds:
       - composer validate --working-dir=sdk --strict
+      - composer analyse --working-dir=sdk
       - composer test --working-dir=sdk
 
   sdk:package:

@@ -1,0 +1,8 @@
+{
+  "name": "ompphp/e2e-fixture",
+  "description": "End-to-end fixture for the embedded ompphp runtime",
+  "license": "MPL-2.0",
+  "repositories": [{ "type": "artifact", "url": "packages" }],
+  "require": { "ompphp/sdk": "0.1.0-beta.1" },
+  "config": { "platform": { "php": "8.2.0" } }
+}

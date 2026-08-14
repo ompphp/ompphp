@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Omp\Internal;
 
+/** @phpstan-impure */
 function native_call(string $name, mixed ...$arguments): mixed
 {
     return \ompphp_native_call($name, ...$arguments);
@@ -59,12 +60,14 @@ function install_composer_compatibility_loader(): void
 
 install_composer_compatibility_loader();
 
+/** @phpstan-impure */
 function register_handler(string $event, callable $handler): void
 {
     $GLOBALS['__ompphp_handlers'][$event][] = $handler;
 }
 
 if (!function_exists(__NAMESPACE__ . '\\dispatch')) {
+    /** @param list<mixed> $arguments */
     function dispatch(string $event, array $arguments = []): ?bool
     {
         if (!isset($GLOBALS['__ompphp_handlers'][$event])) {

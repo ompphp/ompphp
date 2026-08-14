@@ -7,15 +7,14 @@ require __DIR__ . '/vendor/autoload.php';
 use Omp\Api\Dialog;
 use Omp\Api\Player;
 use Omp\Constant\DialogStyle;
-use Omp\Event\Events;
+use Omp\Event\Handlers;
 use Omp\Runtime;
-use Omp\Server;
 
 const WELCOME_DIALOG = 1;
 
 Runtime::assertCompatible();
 
-Server::on(Events::PLAYER_CONNECT, static function (int $playerId): void {
+Handlers::playerConnect(static function (int $playerId): void {
     Dialog::show(
         $playerId,
         WELCOME_DIALOG,
@@ -27,7 +26,7 @@ Server::on(Events::PLAYER_CONNECT, static function (int $playerId): void {
     );
 });
 
-Server::on(Events::DIALOG_RESPONSE, static function (
+Handlers::dialogResponse(static function (
     int $playerId,
     int $dialogId,
     int $response,

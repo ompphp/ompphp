@@ -64,6 +64,30 @@ func TestGenerateEvents(t *testing.T) {
 	}
 }
 
+func TestGenerateEventHandlers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "Handlers.php")
+	m := model.Model{Events: []model.Event{{
+		Name:       "onPlayerConnect",
+		Parameters: []model.Parameter{{Name: "player", Type: "void*"}},
+	}}}
+	if err := generateEventHandlers(path, m); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fragment := range []string{
+		"@param callable(int): mixed $handler",
+		"function playerConnect(callable $handler): void",
+		"Server::on(Events::PLAYER_CONNECT, $handler)",
+	} {
+		if !strings.Contains(string(data), fragment) {
+			t.Fatalf("generated handlers do not contain %q:\n%s", fragment, data)
+		}
+	}
+}
+
 func TestGeneratePHPExcludesOutputParameters(t *testing.T) {
 	m := model.Model{Functions: []model.Function{{Name: "Player_GetPos", Parameters: []model.Parameter{
 		{Name: "player", Type: "void*"}, {Name: "x", Type: "float*", Output: true}, {Name: "y", Type: "float*", Output: true}, {Name: "z", Type: "float*", Output: true},

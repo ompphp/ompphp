@@ -23,10 +23,11 @@ jobs:
       - run: go vet ./...
       - run: composer install --working-dir=sdk --no-interaction --no-progress
       - run: composer validate --working-dir=sdk --strict
+      - run: composer analyse --working-dir=sdk
       - run: composer test --working-dir=sdk
       - run: for example in examples/*/composer.json; do composer install --working-dir="$(dirname "$example")" --no-interaction --no-progress; done
       - run: go run ./tools/codegen
-      - run: git diff --exit-code -- sdk/src/Internal/api_generated.php sdk/src/Api sdk/src/Event/Events.php sdk/src/Constant cmd/component/native_generated.go cmd/component/native_generated.h cmd/component/events_generated.go cmd/component/events_generated.h
+      - run: git diff --exit-code -- sdk/src/Internal/api_generated.php sdk/src/Api sdk/src/Event/Events.php sdk/src/Event/Handlers.php sdk/src/Constant cmd/component/native_generated.go cmd/component/native_generated.h cmd/component/events_generated.go cmd/component/events_generated.h
       - run: go test -race -short -timeout=3m ./...
       - run: GOARCH=amd64 CGO_ENABLED=1 go build -mod=vendor -buildmode=c-shared -o build/ompphp.so ./cmd/component
       - run: ./tests/e2e-openmp.sh --skip-build
@@ -41,6 +42,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          tools: composer
       - uses: msys2/setup-msys2@v2
         id: msys2
         with:

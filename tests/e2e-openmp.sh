@@ -26,6 +26,13 @@ tar -xJf "${test_dir}/open.mp-linux-x86_64-.tar.xz" -C "${test_dir}"
 server_dir="${test_dir}/Server"
 cp "${workspace_dir}/build/ompphp.so" "${server_dir}/components/ompphp.so"
 cp "${workspace_dir}/tests/fixtures/e2e/gamemode.php" "${server_dir}/gamemode.php"
+cp "${workspace_dir}/tests/fixtures/e2e/composer.json" "${server_dir}/composer.json"
+mkdir -p "${server_dir}/packages"
+(
+    cd "${workspace_dir}"
+    go run ./tools/sdkpack -version 0.1.0-beta.1 -out "${server_dir}/packages"
+)
+composer install --working-dir="${server_dir}" --no-dev --no-interaction --no-progress
 
 set +e
 (
@@ -42,4 +49,5 @@ fi
 
 grep -F "Successfully loaded component ompphp" "${test_dir}/server.log"
 grep -F "OMPPHP_E2E_READY" "${test_dir}/server.log"
+grep -F "OMPPHP_E2E_SDK" "${test_dir}/server.log"
 grep -F "OMPPHP_E2E_TICK" "${test_dir}/server.log"

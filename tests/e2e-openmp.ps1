@@ -19,6 +19,16 @@ try {
     $serverDir = Join-Path $testDir 'Server'
     Copy-Item (Join-Path $PSScriptRoot '../build/ompphp.dll') (Join-Path $serverDir 'components/ompphp.dll')
     Copy-Item (Join-Path $PSScriptRoot 'fixtures/e2e/gamemode.php') (Join-Path $serverDir 'gamemode.php')
+    Copy-Item (Join-Path $PSScriptRoot 'fixtures/e2e/composer.json') (Join-Path $serverDir 'composer.json')
+    $packagesDir = Join-Path $serverDir 'packages'
+    New-Item -ItemType Directory -Path $packagesDir | Out-Null
+    Push-Location (Join-Path $PSScriptRoot '..')
+    try {
+        go run ./tools/sdkpack -version 0.1.0-beta.1 -out $packagesDir
+    } finally {
+        Pop-Location
+    }
+    composer install --working-dir=$serverDir --no-dev --no-interaction --no-progress
 
     $stdout = Join-Path $testDir 'stdout.log'
     $stderr = Join-Path $testDir 'stderr.log'
@@ -31,7 +41,7 @@ try {
     }
 
     $log = ((Get-Content -Raw $stdout), (Get-Content -Raw $stderr)) -join "`n"
-    foreach ($marker in @('Successfully loaded component ompphp', 'OMPPHP_E2E_READY', 'OMPPHP_E2E_TICK')) {
+    foreach ($marker in @('Successfully loaded component ompphp', 'OMPPHP_E2E_READY', 'OMPPHP_E2E_SDK', 'OMPPHP_E2E_TICK')) {
         if (!$log.Contains($marker)) {
             Write-Host $log
             throw "Missing server marker: $marker"
