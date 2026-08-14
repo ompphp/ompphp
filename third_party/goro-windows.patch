@@ -1317,6 +1317,21 @@
  		return "", "", os.ErrNotExist
  	}
  
+@@ -242,7 +259,13 @@ func (f *FileHandler) OpenFile(ctx phpv.Context, fname string, mode string, _ ..
+ 	s.SetAttr("mode", mode)
+ 	s.SetAttr("flag", flag)
+ 	s.SetAttr("seekable", true)
+-	s.SetAttr("uri", name)
++	uri := name
++	if os.PathSeparator == '\\' {
++		// PHP's __FILE__ and __DIR__ expose native absolute paths. Composer uses
++		// them to build further require paths, so retain the Windows drive here.
++		uri = filepath.ToSlash(fname)
++	}
++	s.SetAttr("uri", uri)
+ 
+ 	s.ResourceType = phpv.ResourceStream
+ 	s.ResourceID = ctx.Global().NextResourceID()
 --- a/vendor/github.com/KarpelesLab/goro/core/phpctx/global-fs.go
 +++ b/vendor/github.com/KarpelesLab/goro/core/phpctx/global-fs.go
 @@ -3,7 +3,8 @@
@@ -1328,7 +1343,23 @@
  	"path/filepath"
  	"strings"
  
-@@ -131,6 +132,6 @@ func (g *Global) openForInclusion(ctx phpv.Context, fn phpv.ZString) (*stream.St
+@@ -25,6 +26,14 @@ func (g *Global) getHandler(fn phpv.ZString) (stream.Handler, *url.URL, error) {
+ 	fnStr := string(fn)
+ 
+-	u, err := url.Parse(fnStr)
++	var u *url.URL
++	var err error
++	if filepath.VolumeName(fnStr) != "" {
++		// url.Parse treats a Windows drive letter as a URI scheme. Keep native
++		// drive and UNC paths on the local file handler instead.
++		u = &url.URL{Scheme: "file", Path: fnStr}
++	} else {
++		u, err = url.Parse(fnStr)
++	}
+ 	if err != nil {
+ 		// Go's url.Parse rejects control characters (e.g. \r, \n) in URLs.
+ 		// PHP is more permissive, especially for data: URIs.
+@@ -131,6 +140,6 @@ func (g *Global) openForInclusion(ctx phpv.Context, fn phpv.ZString) (*stream.St
  		return nil, err
  	}
  	localFile := u.Scheme == "file" || u.Scheme == ""

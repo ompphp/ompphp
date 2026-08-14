@@ -26,7 +26,15 @@ type OpenContext int
 func (g *Global) getHandler(fn phpv.ZString) (stream.Handler, *url.URL, error) {
 	fnStr := string(fn)
 
-	u, err := url.Parse(fnStr)
+	var u *url.URL
+	var err error
+	if filepath.VolumeName(fnStr) != "" {
+		// url.Parse treats a Windows drive letter as a URI scheme. Keep native
+		// drive and UNC paths on the local file handler instead.
+		u = &url.URL{Scheme: "file", Path: fnStr}
+	} else {
+		u, err = url.Parse(fnStr)
+	}
 	if err != nil {
 		// Go's url.Parse rejects control characters (e.g. \r, \n) in URLs.
 		// PHP is more permissive, especially for data: URIs.

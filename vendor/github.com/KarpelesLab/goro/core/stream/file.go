@@ -259,7 +259,13 @@ func (f *FileHandler) OpenFile(ctx phpv.Context, fname string, mode string, _ ..
 	s.SetAttr("mode", mode)
 	s.SetAttr("flag", flag)
 	s.SetAttr("seekable", true)
-	s.SetAttr("uri", name)
+	uri := name
+	if os.PathSeparator == '\\' {
+		// PHP's __FILE__ and __DIR__ expose native absolute paths. Composer uses
+		// them to build further require paths, so retain the Windows drive here.
+		uri = filepath.ToSlash(fname)
+	}
+	s.SetAttr("uri", uri)
 
 	s.ResourceType = phpv.ResourceStream
 	s.ResourceID = ctx.Global().NextResourceID()
