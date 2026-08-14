@@ -22,13 +22,23 @@ try {
     Copy-Item (Join-Path $PSScriptRoot 'fixtures/e2e/composer.json') (Join-Path $serverDir 'composer.json')
     $packagesDir = Join-Path $serverDir 'packages'
     New-Item -ItemType Directory -Path $packagesDir | Out-Null
+    php -r "exit(extension_loaded('zip') ? 0 : 1);"
+    if ($LASTEXITCODE -ne 0) {
+        throw "PHP zip extension is required for the SDK artifact repository"
+    }
     Push-Location (Join-Path $PSScriptRoot '..')
     try {
         go run ./tools/sdkpack -version 0.1.0-beta.1 -out $packagesDir
+        if ($LASTEXITCODE -ne 0) {
+            throw "SDK packaging failed with exit code $LASTEXITCODE"
+        }
     } finally {
         Pop-Location
     }
     composer install --working-dir=$serverDir --no-dev --no-interaction --no-progress
+    if ($LASTEXITCODE -ne 0) {
+        throw "Composer install failed with exit code $LASTEXITCODE"
+    }
 
     $stdout = Join-Path $testDir 'stdout.log'
     $stderr = Join-Path $testDir 'stderr.log'
