@@ -47,6 +47,16 @@ final readonly class Vehicle
         return Vector3::fromNative(\Omp\Internal\vehicle_get_velocity($this->id), 'Vehicle_GetVelocity');
     }
 
+    public function setVelocity(Vector3 $velocity): bool
+    {
+        return (bool) \Omp\Internal\vehicle_set_velocity(
+            $this->id,
+            $velocity->x,
+            $velocity->y,
+            $velocity->z,
+        );
+    }
+
     public function rotation(): Quaternion
     {
         return Quaternion::fromNative(\Omp\Internal\vehicle_get_rotation_quat($this->id), 'Vehicle_GetRotationQuat');
@@ -55,6 +65,17 @@ final readonly class Vehicle
     public function damageStatus(): VehicleDamageStatus
     {
         return VehicleDamageStatus::fromNative(\Omp\Internal\vehicle_get_damage_status($this->id));
+    }
+
+    public function updateDamageStatus(VehicleDamageStatus $status): bool
+    {
+        return (bool) \Omp\Internal\vehicle_update_damage_status(
+            $this->id,
+            $status->panels,
+            $status->doors,
+            $status->lights,
+            $status->tires,
+        );
     }
 
     public function repair(): bool

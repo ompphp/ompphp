@@ -78,6 +78,17 @@ final readonly class Player
         return Vector3::fromNative(\Omp\Internal\native_call('Player_GetVelocity', $this->id), 'Player_GetVelocity');
     }
 
+    public function setVelocity(Vector3 $velocity): bool
+    {
+        return (bool) \Omp\Internal\native_call(
+            'Player_SetVelocity',
+            $this->id,
+            $velocity->x,
+            $velocity->y,
+            $velocity->z,
+        );
+    }
+
     public function rotation(): Quaternion
     {
         return Quaternion::fromNative(\Omp\Internal\native_call('Player_GetRotationQuat', $this->id), 'Player_GetRotationQuat');

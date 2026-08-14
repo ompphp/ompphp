@@ -8,6 +8,7 @@ use Omp\Api\Core;
 use Omp\Event\Handlers;
 use Omp\Player;
 use Omp\Runtime;
+use Omp\Vehicle;
 use Omp\Value\KeyState;
 use Omp\Value\Quaternion;
 use Omp\Value\Vector3;
@@ -20,12 +21,19 @@ $position = new Vector3(1.0, 2.0, 3.0);
 $keyState = KeyState::fromNative([132, -1, 1]);
 $rotation = Quaternion::fromNative([1.0, 0.0, 0.0, 0.0], 'E2E_Rotation');
 $damage = VehicleDamageStatus::fromNative([1, 2, 3, 4]);
+$playerVelocityResult = $player->setVelocity(new Vector3(0.0, 0.0, 0.2));
+$vehicle = new Vehicle(7);
+$vehicleVelocityResult = $vehicle->setVelocity(new Vector3(0.0, 0.0, 0.1));
+$vehicleDamageResult = $vehicle->updateDamageStatus($damage);
 if (
     $player->id !== 7
     || $position->z !== 3.0
     || !$keyState->pressed(132)
     || $rotation->w !== 1.0
     || $damage->tires !== 4
+    || !is_bool($playerVelocityResult)
+    || !is_bool($vehicleVelocityResult)
+    || !is_bool($vehicleDamageResult)
 ) {
     throw new RuntimeException('Readonly SDK value objects returned unexpected data.');
 }

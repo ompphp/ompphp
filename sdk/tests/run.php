@@ -15,6 +15,14 @@ final class NativeStub
     public static array $calls = [];
 }
 
+/** @param list<mixed> $arguments */
+function expectLastNativeCall(string $name, array $arguments): void
+{
+    $lastCall = array_key_last(NativeStub::$calls);
+    expect($lastCall !== null);
+    expect(NativeStub::$calls[$lastCall] === [$name, $arguments]);
+}
+
 function ompphp_native_call(string $name, mixed ...$arguments): mixed
 {
     NativeStub::$calls[] = [$name, $arguments];
@@ -89,6 +97,8 @@ $position = $player->position();
 expect($position->x === 1.5 && $position->y === 2.5 && $position->z === 3.5);
 $velocity = $player->velocity();
 expect($velocity->x === 0.1 && $velocity->y === 0.2 && $velocity->z === 0.3);
+expect($player->setVelocity(new Vector3(1.0, 2.0, 3.0)));
+expectLastNativeCall('Player_SetVelocity', [7, 1.0, 2.0, 3.0]);
 $rotation = $player->rotation();
 expect($rotation->w === 1.0 && $rotation->x === 0.0 && $rotation->y === 0.0 && $rotation->z === 0.0);
 $keyState = $player->keyState();
@@ -100,9 +110,7 @@ expect(Runtime::version() === '0.1.0-test');
 Runtime::assertCompatible();
 
 expect(PlayerAPI::setHealth(8, 88.0));
-$lastCall = array_key_last(NativeStub::$calls);
-expect($lastCall !== null);
-expect(NativeStub::$calls[$lastCall] === ['Player_SetHealth', [8, 88.0]]);
+expectLastNativeCall('Player_SetHealth', [8, 88.0]);
 
 $actor = new Actor(2);
 expect($actor->setHealth(80.0));
@@ -120,10 +128,14 @@ $vehiclePosition = $vehicle->position();
 expect($vehiclePosition->x === 4.5 && $vehiclePosition->y === 5.5 && $vehiclePosition->z === 6.5);
 $vehicleVelocity = $vehicle->velocity();
 expect($vehicleVelocity->x === 0.4 && $vehicleVelocity->y === 0.5 && $vehicleVelocity->z === 0.6);
+expect($vehicle->setVelocity(new Vector3(7.0, 8.0, 9.0)));
+expectLastNativeCall('Vehicle_SetVelocity', [9, 7.0, 8.0, 9.0]);
 $vehicleRotation = $vehicle->rotation();
 expect($vehicleRotation->w === 0.5 && $vehicleRotation->x === 0.5 && $vehicleRotation->y === 0.5 && $vehicleRotation->z === 0.5);
 $damage = $vehicle->damageStatus();
 expect($damage->panels === 1 && $damage->doors === 2 && $damage->lights === 3 && $damage->tires === 4);
+expect($vehicle->updateDamageStatus(new \Omp\Value\VehicleDamageStatus(5, 6, 7, 8)));
+expectLastNativeCall('Vehicle_UpdateDamageStatus', [9, 5, 6, 7, 8]);
 expect($vehicle->repair());
 expect($vehicle->destroy());
 
