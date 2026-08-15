@@ -220,11 +220,11 @@ func normalizeConfig(config Config) Config {
 	if config.NativeQueue <= 0 {
 		config.NativeQueue = defaults.NativeQueue
 	}
-	if config.FutureLimit <= 0 {
-		config.FutureLimit = config.Workers*(config.TaskQueue+1) + config.NativeWorkers + config.NativeQueue + config.CompletionQueue
-	}
 	if config.CompletionQueue <= 0 {
 		config.CompletionQueue = defaults.CompletionQueue
+	}
+	if config.FutureLimit <= 0 {
+		config.FutureLimit = config.Workers*(config.TaskQueue+1) + config.NativeWorkers + config.NativeQueue + config.CompletionQueue
 	}
 	if config.ActorMailbox <= 0 {
 		config.ActorMailbox = defaults.ActorMailbox

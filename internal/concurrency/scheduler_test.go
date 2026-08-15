@@ -365,12 +365,9 @@ func TestNativeAndPHPQueuesApplyIndependentBackpressure(t *testing.T) {
 	phpBlock := make(chan struct{})
 	s := newTestScheduler(t, Config{Workers: 1, TaskQueue: 1, NativeWorkers: 1, NativeQueue: 1, CompletionQueue: 8}, phpBlock)
 	nativeBlock := make(chan struct{})
-	nativeStarted := make(chan struct{})
+	nativeStarted := make(chan struct{}, 1)
 	if err := s.RegisterNative("slow", func(ctx context.Context, _ any) (any, error) {
-		select {
-		case nativeStarted <- struct{}{}:
-		default:
-		}
+		nativeStarted <- struct{}{}
 		select {
 		case <-nativeBlock:
 			return nil, nil
@@ -383,8 +380,12 @@ func TestNativeAndPHPQueuesApplyIndependentBackpressure(t *testing.T) {
 	if _, err := s.Submit("php", nil); err != nil {
 		t.Fatal(err)
 	}
-	for !s.workers[0].busy.Load() {
+	phpDeadline := time.Now().Add(time.Second)
+	for !s.workers[0].busy.Load() && time.Now().Before(phpDeadline) {
 		runtime.Gosched()
+	}
+	if !s.workers[0].busy.Load() {
+		t.Fatal("PHP worker did not start blocked task")
 	}
 	if _, err := s.Submit("queued", nil); err != nil {
 		t.Fatal(err)
@@ -395,7 +396,11 @@ func TestNativeAndPHPQueuesApplyIndependentBackpressure(t *testing.T) {
 	if _, err := s.SubmitNative("slow", nil); err != nil {
 		t.Fatal(err)
 	}
-	<-nativeStarted
+	select {
+	case <-nativeStarted:
+	case <-time.After(time.Second):
+		t.Fatal("native worker did not start blocked task")
+	}
 	if _, err := s.SubmitNative("slow", nil); err != nil {
 		t.Fatal(err)
 	}
