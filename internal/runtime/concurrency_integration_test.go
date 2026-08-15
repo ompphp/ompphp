@@ -17,13 +17,20 @@ var providerSequence atomic.Uint64
 
 func TestAsyncActorsTimersAndWorkerGuard(t *testing.T) {
 	root := t.TempDir()
-	sdk, err := filepath.Abs(filepath.Join("..", "..", "sdk", "vendor", "autoload.php"))
+	sdk, err := filepath.Abs(filepath.Join("..", "..", "sdk", "src"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	bootstrap := filepath.Join(root, "autoload.php")
 	workerCode := fmt.Sprintf(`<?php
-require %q;
+$sdk = %q;
+spl_autoload_register(static function (string $class) use ($sdk): void {
+    if (!str_starts_with($class, 'Omp\\')) return;
+    $path = $sdk . '/' . str_replace('\\', '/', substr($class, 4)) . '.php';
+    if (is_file($path)) require $path;
+});
+require $sdk . '/Internal/functions.php';
+require $sdk . '/Internal/api_generated.php';
 final class DoubleTask { public function __invoke(mixed $value): int { return $value * 2; } }
 final class GuardTask { public function __invoke(mixed $value): mixed { return \Omp\Internal\native_call('Core_TickCount'); } }
 final class CounterActor {
