@@ -2,7 +2,7 @@
   "name": "ompphp/example-dialog",
   "description": "Dialog handling example for ompphp",
   "license": "MPL-2.0",
-  "repositories": [{ "type": "path", "url": "../../sdk" }],
+  "repositories": [{ "type": "path", "url": "../../sdk", "options": { "versions": { "ompphp/sdk": "dev-main" } } }],
   "require": { "ompphp/sdk": "dev-main" },
   "config": { "platform": { "php": "8.2.0" } }
 }
