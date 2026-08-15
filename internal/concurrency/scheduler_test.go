@@ -203,6 +203,49 @@ func TestTimeoutCancelsNativeContext(t *testing.T) {
 	}
 }
 
+func TestTimeoutIsStoppedWhenFutureSettles(t *testing.T) {
+	s := newTestScheduler(t, Config{Workers: 1, TaskQueue: 4, CompletionQueue: 4}, nil)
+	id, err := s.Submit("echo", int64(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Timeout(id, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	completion := waitCompletion(t, s)
+	s.mu.Lock()
+	state := s.futures[id]
+	timerStopped := state != nil && state.timeout == nil
+	s.mu.Unlock()
+	if !timerStopped {
+		t.Fatal("settled future retained its timeout timer")
+	}
+	s.Acknowledge(completion.ID)
+	if err := s.Timeout(id, time.Second); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("timeout after acknowledgement = %v", err)
+	}
+}
+
+func TestReplacingTimeoutStopsPreviousDeadline(t *testing.T) {
+	block := make(chan struct{})
+	s := newTestScheduler(t, Config{Workers: 1, TaskQueue: 2, CompletionQueue: 2}, block)
+	id, err := s.Submit("block", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Timeout(id, time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Timeout(id, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if completions := s.Drain(1); len(completions) != 0 {
+		t.Fatalf("replaced timeout fired: %#v", completions)
+	}
+	close(block)
+}
+
 func TestActorOrderingAndState(t *testing.T) {
 	s := newTestScheduler(t, Config{Workers: 2, TaskQueue: 8, CompletionQueue: 8, ActorMailbox: 4}, nil)
 	actor, _, err := s.SpawnActor("counter", int64(10))

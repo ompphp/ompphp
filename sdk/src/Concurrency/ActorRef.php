@@ -27,6 +27,11 @@ final class ActorRef
             throw new \RuntimeException('The actor is already stopping.');
         }
         $this->stopping = true;
-        return Future::fromHandle(\Omp\Internal\actor_stop($this->handle));
+        try {
+            return Future::fromHandle(\Omp\Internal\actor_stop($this->handle));
+        } catch (\Throwable $error) {
+            $this->stopping = false;
+            throw $error;
+        }
     }
 }

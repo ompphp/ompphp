@@ -93,6 +93,7 @@ type Scheduler struct {
 
 type futureState struct {
 	cancel    context.CancelFunc
+	timeout   *time.Timer
 	cancelled bool
 	settled   bool
 }
@@ -350,6 +351,10 @@ func (s *Scheduler) cancelFuture(id uint64, timeout bool) bool {
 	}
 	future.cancelled = true
 	future.settled = true
+	if future.timeout != nil {
+		future.timeout.Stop()
+		future.timeout = nil
+	}
 	future.cancel()
 	if timeout {
 		s.stats.TimedOutTasks++
@@ -365,14 +370,18 @@ func (s *Scheduler) Timeout(id uint64, duration time.Duration) error {
 		return errors.New("timeout must be greater than zero")
 	}
 	s.mu.Lock()
-	if s.futures[id] == nil {
+	future := s.futures[id]
+	if future == nil || future.settled {
 		s.mu.Unlock()
 		return ErrNotFound
 	}
-	s.mu.Unlock()
-	time.AfterFunc(duration, func() {
+	if future.timeout != nil {
+		future.timeout.Stop()
+	}
+	future.timeout = time.AfterFunc(duration, func() {
 		s.cancelFuture(id, true)
 	})
+	s.mu.Unlock()
 	return nil
 }
 
@@ -474,6 +483,10 @@ func (s *Scheduler) Close() {
 	s.cancel()
 	s.mu.Lock()
 	for _, future := range s.futures {
+		if future.timeout != nil {
+			future.timeout.Stop()
+			future.timeout = nil
+		}
 		future.cancel()
 	}
 	for _, timer := range s.timers {
@@ -546,6 +559,10 @@ func (s *Scheduler) workerLoop(worker *worker) {
 		cancelled := future == nil || future.cancelled || future.settled
 		if !cancelled {
 			future.settled = true
+			if future.timeout != nil {
+				future.timeout.Stop()
+				future.timeout = nil
+			}
 			if remote == nil {
 				s.stats.CompletedTasks++
 			} else {
@@ -595,6 +612,10 @@ func (s *Scheduler) deliver(completion Completion) {
 func (s *Scheduler) Acknowledge(id uint64) {
 	s.mu.Lock()
 	if future := s.futures[id]; future != nil {
+		if future.timeout != nil {
+			future.timeout.Stop()
+			future.timeout = nil
+		}
 		future.cancel()
 		delete(s.futures, id)
 	}

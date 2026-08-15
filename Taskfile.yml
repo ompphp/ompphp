@@ -102,6 +102,13 @@ tasks:
     cmds:
       - go test -race -run 'HighVolume|SeparateWorker' ./internal/concurrency ./internal/runtime
 
+  test:soak:
+    desc: Run the one-minute scheduler lifecycle and leak soak test
+    env:
+      OMPPHP_STRESS_DURATION: 1m
+    cmds:
+      - go test -race -count=1 -timeout=3m -run SchedulerSoakAndLifecycleCleanup ./internal/concurrency
+
   check:
     cmds:
       - task: sdk:test

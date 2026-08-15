@@ -14,6 +14,10 @@ final class Future
     /** @var array<int, self> */
     private static array $pending = [];
 
+    /** @var list<array{self, array{?callable, ?callable, self}}> */
+    private static array $queue = [];
+    private static bool $flushing = false;
+
     private int $state = self::PENDING;
     private mixed $value = null;
     private mixed $error = null;
@@ -145,18 +149,41 @@ final class Future
     {
         $handlers = $this->handlers;
         $this->handlers = [];
-        foreach ($handlers as [$fulfilled, $rejected, $next]) {
-            try {
-                if ($this->state === self::FULFILLED) {
-                    $next->resolve($fulfilled === null ? $this->value : $fulfilled($this->value));
-                } elseif ($rejected === null) {
-                    $next->reject($this->failure(), $this->state);
-                } else {
-                    $next->resolve($rejected($this->failure()));
+        foreach ($handlers as $handler) {
+            self::$queue[] = [$this, $handler];
+        }
+        if (self::$flushing) {
+            return;
+        }
+        self::$flushing = true;
+        try {
+            while (self::$queue !== []) {
+                $batch = self::$queue;
+                self::$queue = [];
+                foreach ($batch as [$source, $handler]) {
+                    $source->runHandler($handler);
                 }
-            } catch (\Throwable $error) {
-                $next->reject($error);
             }
+        } finally {
+            self::$queue = [];
+            self::$flushing = false;
+        }
+    }
+
+    /** @param array{?callable, ?callable, self} $handler */
+    private function runHandler(array $handler): void
+    {
+        [$fulfilled, $rejected, $next] = $handler;
+        try {
+            if ($this->state === self::FULFILLED) {
+                $next->resolve($fulfilled === null ? $this->value : $fulfilled($this->value));
+            } elseif ($rejected === null) {
+                $next->reject($this->failure(), $this->state);
+            } else {
+                $next->resolve($rejected($this->failure()));
+            }
+        } catch (\Throwable $error) {
+            $next->reject($error);
         }
     }
 

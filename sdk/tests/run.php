@@ -171,6 +171,14 @@ expect($flattened->isPending());
 \Omp\Concurrency\Future::complete(9004, 'done', null, false);
 expect($flattened->isFulfilled());
 
+$chainRoot = \Omp\Concurrency\Future::fromHandle(9005);
+$chainTail = $chainRoot;
+for ($index = 0; $index < 100_000; $index++) {
+    $chainTail = $chainTail->then(static fn (int $value): int => $value + 1);
+}
+\Omp\Concurrency\Future::complete(9005, 0, null, false);
+expect($chainTail->isFulfilled());
+
 expect(\Omp\Internal\native_call('Named_Arguments', player: 7) === true);
 expectLastNativeCall('Named_Arguments', [7]);
 
