@@ -55,19 +55,25 @@ final class CounterActor {
 require %q;
 use Omp\Async;
 use Omp\Concurrency\Actor;
+use Omp\Concurrency\ActorPool;
 use Omp\Timer;
-$GLOBALS['async'] = 0; $GLOBALS['nativeAsync'] = 0; $GLOBALS['actor'] = 0; $GLOBALS['timer'] = false; $GLOBALS['guarded'] = false;
+$GLOBALS['async'] = 0; $GLOBALS['nativeAsync'] = 0; $GLOBALS['actor'] = 0; $GLOBALS['poolResults'] = []; $GLOBALS['timer'] = false; $GLOBALS['guarded'] = false;
 Async::run(DoubleTask::class, 21)->then(function (mixed $value): void { $GLOBALS['async'] = $value; });
 Async::native(%q, 8)->then(function (mixed $value): void { $GLOBALS['nativeAsync'] = $value; });
 $actor = Actor::spawn(CounterActor::class, 10);
 $actor->call('add', 1)->then(function (mixed $value): void { $GLOBALS['actor'] = $value; });
 $actor->call('add', 2)->then(function (mixed $value): void { $GLOBALS['actor'] = $value; });
+$pool = ActorPool::spawn(CounterActor::class, 4, 0);
+for ($shard = 0; $shard < $pool->size(); $shard++) {
+    $pool->actor($shard)->call('add', $shard + 1)
+        ->then(function (mixed $value): void { $GLOBALS['poolResults'][] = $value; });
+}
 Async::run(GuardTask::class, null)->catch(function (\Throwable $error): void {
     $GLOBALS['guarded'] = str_contains($error->getMessage(), 'cannot call open.mp from a worker runtime');
 });
 Timer::after(1, function (): void { $GLOBALS['timer'] = true; });
 \Omp\Server::on('Tick', function (): bool {
-    return $GLOBALS['async'] === 42 && $GLOBALS['nativeAsync'] === 9 && $GLOBALS['actor'] === 13 && $GLOBALS['timer'] && $GLOBALS['guarded'];
+    return $GLOBALS['async'] === 42 && $GLOBALS['nativeAsync'] === 9 && $GLOBALS['actor'] === 13 && count($GLOBALS['poolResults']) === 4 && array_sum($GLOBALS['poolResults']) === 10 && $GLOBALS['timer'] && $GLOBALS['guarded'];
 });
 `, bootstrap, providerName)
 	if err := os.WriteFile(main, []byte(mainCode), 0o600); err != nil {

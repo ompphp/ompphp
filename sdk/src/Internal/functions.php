@@ -92,6 +92,25 @@ function actor_stop(int $id): int
     return \ompphp_actor_stop($id);
 }
 
+/** @return array{int, list<array{int, int}>} */
+function actor_pool_spawn(string $class, int $count, mixed $payload): array
+{
+    try {
+        return \ompphp_actor_pool_spawn($class, $count, $payload);
+    } catch (\Throwable $error) {
+        if (str_contains($error->getMessage(), 'scheduler queue is full')) {
+            throw new \Omp\Concurrency\SchedulerOverloadedException('The async task queue is full.', previous: $error);
+        }
+        throw $error;
+    }
+}
+
+/** @return list<int> */
+function actor_pool_stop(int $id): array
+{
+    return \ompphp_actor_pool_stop($id);
+}
+
 function timer_start(int $milliseconds, bool $repeat): int
 {
     return \ompphp_timer_start($milliseconds, $repeat);

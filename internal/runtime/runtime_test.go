@@ -12,10 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/KarpelesLab/goro/core/phpctx"
 	"github.com/ompphp/ompphp/internal/native"
 )
 
-func script(t *testing.T, source string) string {
+func script(t testing.TB, source string) string {
 	t.Helper()
 	name := filepath.Join(t.TempDir(), "main.php")
 	if err := os.WriteFile(name, []byte(source), 0o600); err != nil {
@@ -474,5 +475,38 @@ func BenchmarkDispatch(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		r.Dispatch("Tick", 16)
+	}
+}
+
+func BenchmarkDispatchWithoutHandler(b *testing.B) {
+	r := New(context.Background(), nil, nil)
+	defer r.Close()
+	if err := r.Load(script(b, `<?php namespace Omp\Internal; function dispatch($event, $args, $default) { return null; }`)); err != nil {
+		b.Fatal(err)
+	}
+	b.ResetTimer()
+	for b.Loop() {
+		r.Dispatch("Tick")
+	}
+}
+
+func BenchmarkCompletionDeliveryBacklog(b *testing.B) {
+	for _, count := range []int{100, 500, 1000} {
+		b.Run(fmt.Sprintf("%d-completions", count), func(b *testing.B) {
+			r := New(context.Background(), nil, nil)
+			defer r.Close()
+			if err := r.Load(script(b, `<?php namespace Omp\Internal; function complete_future($id, $value, $error, $cancelled): void {}`)); err != nil {
+				b.Fatal(err)
+			}
+			b.ResetTimer()
+			for b.Loop() {
+				_ = r.executor.run(func(global *phpctx.Global) error {
+					for id := range count {
+						r.callCompletion(global, "Omp\\Internal\\complete_future", uint64(id+1), int64(id), nil, false)
+					}
+					return nil
+				})
+			}
+		})
 	}
 }

@@ -3,6 +3,7 @@ package concurrency
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -36,7 +37,10 @@ func (r *fakeRunner) Run(class string, payload any) (any, *RemoteError) {
 	}
 	return payload, nil
 }
-func (r *fakeRunner) SpawnActor(id uint64, _ string, payload any) *RemoteError {
+func (r *fakeRunner) SpawnActor(id uint64, class string, payload any) *RemoteError {
+	if class == "fail" {
+		return &RemoteError{Class: "RuntimeException", Message: "spawn failed"}
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.actors[id] = payload.(int64)
@@ -174,7 +178,7 @@ func TestNativePanicRejectsWithoutStoppingWorker(t *testing.T) {
 		t.Fatal(err)
 	}
 	completion := waitCompletion(t, s)
-	if completion.ID != id || completion.Error == nil || completion.Error.Class != "WorkerPanic" {
+	if completion.ID != id || completion.Error == nil || completion.Error.Class != "NativePanic" {
 		t.Fatalf("panic completion = %#v", completion)
 	}
 	if _, err := s.Submit("echo", int64(1)); err != nil {
@@ -326,6 +330,232 @@ func TestDifferentActorsRunConcurrently(t *testing.T) {
 		}
 	}
 	close(release)
+}
+
+func TestNativeAndPHPExecutionAreIsolated(t *testing.T) {
+	s := newTestScheduler(t, Config{Workers: 1, TaskQueue: 2, NativeWorkers: 1, NativeQueue: 1, CompletionQueue: 8}, nil)
+	started, release := make(chan struct{}), make(chan struct{})
+	if err := s.RegisterNative("slow", func(ctx context.Context, _ any) (any, error) {
+		close(started)
+		select {
+		case <-release:
+			return int64(1), nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SubmitNative("slow", nil); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	id, err := s.Submit("echo", int64(42))
+	if err != nil {
+		t.Fatal(err)
+	}
+	completion := waitCompletion(t, s)
+	if completion.ID != id || completion.Value != int64(42) {
+		t.Fatalf("PHP work stalled behind native work: %#v", completion)
+	}
+	close(release)
+}
+
+func TestNativeAndPHPQueuesApplyIndependentBackpressure(t *testing.T) {
+	phpBlock := make(chan struct{})
+	s := newTestScheduler(t, Config{Workers: 1, TaskQueue: 1, NativeWorkers: 1, NativeQueue: 1, CompletionQueue: 8}, phpBlock)
+	nativeBlock := make(chan struct{})
+	nativeStarted := make(chan struct{})
+	if err := s.RegisterNative("slow", func(ctx context.Context, _ any) (any, error) {
+		select {
+		case nativeStarted <- struct{}{}:
+		default:
+		}
+		select {
+		case <-nativeBlock:
+			return nil, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Submit("php", nil); err != nil {
+		t.Fatal(err)
+	}
+	for !s.workers[0].busy.Load() {
+		runtime.Gosched()
+	}
+	if _, err := s.Submit("queued", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Submit("full", nil); !errors.Is(err, ErrOverloaded) {
+		t.Fatalf("PHP overload = %v", err)
+	}
+	if _, err := s.SubmitNative("slow", nil); err != nil {
+		t.Fatal(err)
+	}
+	<-nativeStarted
+	if _, err := s.SubmitNative("slow", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SubmitNative("slow", nil); !errors.Is(err, ErrOverloaded) {
+		t.Fatalf("native overload = %v", err)
+	}
+	close(phpBlock)
+	close(nativeBlock)
+}
+
+func TestLoadAwarePHPWorkerSelection(t *testing.T) {
+	s := &Scheduler{workers: []*worker{
+		{id: 1, queue: make(chan work, 10)}, {id: 2, queue: make(chan work, 10)},
+		{id: 3, queue: make(chan work, 10)}, {id: 4, queue: make(chan work, 10)},
+	}}
+	for range 8 {
+		s.workers[0].queue <- work{}
+	}
+	for range 2 {
+		s.workers[2].queue <- work{}
+	}
+	selected := s.pickWorker(-1)
+	if selected.id == 1 || selected.id == 3 {
+		t.Fatalf("selected loaded worker %d", selected.id)
+	}
+}
+
+func TestActorPoolDistributionAffinityAndStop(t *testing.T) {
+	s := newTestScheduler(t, Config{Workers: 4, TaskQueue: 16, NativeWorkers: 1, NativeQueue: 2, CompletionQueue: 32, ActorMailbox: 8}, nil)
+	pool, handles, err := s.SpawnActorPool("counter", 8, int64(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := make([]int, 4)
+	s.mu.Lock()
+	for _, handle := range handles {
+		counts[s.actors[handle.ActorID].worker]++
+	}
+	s.mu.Unlock()
+	for worker, count := range counts {
+		if count != 2 {
+			t.Fatalf("worker %d actor count = %d", worker, count)
+		}
+	}
+	for range handles {
+		completion := waitCompletion(t, s)
+		if completion.Error != nil {
+			t.Fatal(completion.Error)
+		}
+		s.Acknowledge(completion.ID)
+	}
+	for _, handle := range handles {
+		if _, err := s.CallActor(handle.ActorID, "add", int64(1)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range handles {
+		completion := waitCompletion(t, s)
+		if completion.Value != int64(1) {
+			t.Fatalf("actor completion = %#v", completion)
+		}
+		s.Acknowledge(completion.ID)
+	}
+	stops, err := s.StopActorPool(pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range stops {
+		completion := waitCompletion(t, s)
+		if completion.Error != nil {
+			t.Fatal(completion.Error)
+		}
+		s.Acknowledge(completion.ID)
+	}
+	if stats := s.Stats(); stats.Actors != 0 || stats.ActorPools != 0 {
+		t.Fatalf("pool leaked: %#v", stats)
+	}
+}
+
+func TestActorPoolFailureAndQueueSaturationCleanUp(t *testing.T) {
+	s := newTestScheduler(t, Config{Workers: 2, TaskQueue: 4, NativeWorkers: 1, NativeQueue: 1, CompletionQueue: 8}, nil)
+	pool, handles, err := s.SpawnActorPool("fail", 2, int64(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range handles {
+		completion := waitCompletion(t, s)
+		if completion.Error == nil {
+			t.Fatal("failed actor spawn succeeded")
+		}
+		s.Acknowledge(completion.ID)
+	}
+	s.mu.Lock()
+	_, poolRemains := s.pools[pool]
+	s.mu.Unlock()
+	if poolRemains {
+		t.Fatal("failed actor pool remained registered")
+	}
+
+	block := make(chan struct{})
+	full := newTestScheduler(t, Config{Workers: 1, TaskQueue: 1, NativeWorkers: 1, NativeQueue: 1, CompletionQueue: 4}, block)
+	if _, err := full.Submit("running", nil); err != nil {
+		t.Fatal(err)
+	}
+	for !full.workers[0].busy.Load() {
+		runtime.Gosched()
+	}
+	if _, _, err := full.SpawnActorPool("counter", 2, int64(0)); !errors.Is(err, ErrOverloaded) {
+		t.Fatalf("pool saturation = %v", err)
+	}
+	if stats := full.Stats(); stats.ActorPools != 0 || stats.Actors != 0 {
+		t.Fatalf("saturated pool leaked: %#v", stats)
+	}
+	close(block)
+}
+
+func TestCancellationSucceedsWhenCompletionQueueIsFull(t *testing.T) {
+	block := make(chan struct{})
+	s := newTestScheduler(t, Config{Workers: 1, TaskQueue: 2, NativeWorkers: 1, NativeQueue: 1, CompletionQueue: 1}, block)
+	s.completions <- Completion{ID: 999}
+	id, err := s.Submit("blocked", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Cancel(id) {
+		t.Fatal("cancellation depended on completion queue capacity")
+	}
+	completion := s.Drain(1)
+	if len(completion) != 1 || completion[0].ID != id || !completion[0].Cancelled {
+		t.Fatalf("cancellation completion = %#v", completion)
+	}
+	s.Acknowledge(id)
+	close(block)
+}
+
+func TestNativeShutdownCancelsProviderWithoutDeadlock(t *testing.T) {
+	s := newTestScheduler(t, Config{Workers: 1, TaskQueue: 1, NativeWorkers: 2, NativeQueue: 2, CompletionQueue: 2, ShutdownTimeout: time.Second}, nil)
+	started := make(chan struct{}, 2)
+	if err := s.RegisterNative("wait", func(ctx context.Context, _ any) (any, error) {
+		started <- struct{}{}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := s.SubmitNative("wait", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 2 {
+		<-started
+	}
+	done := make(chan struct{})
+	go func() { s.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("native pool shutdown deadlocked")
+	}
 }
 
 func TestConcurrentSubmitAndShutdown(t *testing.T) {

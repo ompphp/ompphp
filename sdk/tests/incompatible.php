@@ -12,7 +12,7 @@ try {
     \Omp\Runtime::assertCompatible();
     throw new RuntimeException('An incompatible native API was accepted.');
 } catch (RuntimeException $error) {
-    if (!str_contains($error->getMessage(), 'requires ompphp native API 2; API 1 is loaded')) {
+    if (!str_contains($error->getMessage(), 'requires ompphp native API 3; API 1 is loaded')) {
         throw $error;
     }
 }

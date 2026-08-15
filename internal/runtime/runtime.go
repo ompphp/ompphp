@@ -31,7 +31,7 @@ import (
 	"github.com/ompphp/ompphp/internal/transport"
 )
 
-const APIVersion = 2
+const APIVersion = 3
 
 var Version = "0.1.0-dev"
 
@@ -222,19 +222,35 @@ func (r *Runtime) pumpGlobal(global *phpctx.Global, limit int) {
 	if scheduler == nil {
 		return
 	}
-	for _, completion := range scheduler.Drain(limit) {
-		if completion.Kind == oconcurrency.CompletionTimer {
-			fn, err := global.GetFunction(global, phpv.ZString("Omp\\Internal\\fire_timer"))
-			if err == nil {
-				_, err = fn.Call(global, []*phpv.ZVal{phpv.ZInt(completion.ID).ZVal()})
-			}
-			if err != nil && r.logger != nil {
-				r.logger.Printf("timer %d failed: %v", completion.ID, err)
-			}
-			continue
+	deadline := time.Now().Add(2 * time.Millisecond)
+	processed := 0
+	for processed < limit {
+		batch := limit - processed
+		if batch > 8 {
+			batch = 8
 		}
-		r.callCompletion(global, "Omp\\Internal\\complete_future", completion.ID, completion.Value, completion.Error, completion.Cancelled)
-		scheduler.Acknowledge(completion.ID)
+		completions := scheduler.Drain(batch)
+		if len(completions) == 0 {
+			return
+		}
+		for _, completion := range completions {
+			processed++
+			if completion.Kind == oconcurrency.CompletionTimer {
+				fn, err := global.GetFunction(global, phpv.ZString("Omp\\Internal\\fire_timer"))
+				if err == nil {
+					_, err = fn.Call(global, []*phpv.ZVal{phpv.ZInt(completion.ID).ZVal()})
+				}
+				if err != nil && r.logger != nil {
+					r.logger.Printf("timer %d failed: %v", completion.ID, err)
+				}
+				continue
+			}
+			r.callCompletion(global, "Omp\\Internal\\complete_future", completion.ID, completion.Value, completion.Error, completion.Cancelled)
+			scheduler.Acknowledge(completion.ID)
+		}
+		if time.Now().After(deadline) {
+			return
+		}
 	}
 }
 

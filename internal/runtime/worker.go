@@ -188,6 +188,8 @@ func concurrencyConfig() oconcurrency.Config {
 	config := oconcurrency.DefaultConfig()
 	config.Workers = envPositiveInt("OMPPHP_WORKERS", config.Workers)
 	config.TaskQueue = envPositiveInt("OMPPHP_TASK_QUEUE", config.TaskQueue)
+	config.NativeWorkers = envPositiveInt("OMPPHP_NATIVE_WORKERS", config.NativeWorkers)
+	config.NativeQueue = envPositiveInt("OMPPHP_NATIVE_QUEUE", config.NativeQueue)
 	config.CompletionQueue = envPositiveInt("OMPPHP_COMPLETION_QUEUE", config.CompletionQueue)
 	config.ActorMailbox = envPositiveInt("OMPPHP_ACTOR_MAILBOX", config.ActorMailbox)
 	return config

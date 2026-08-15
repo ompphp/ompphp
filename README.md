@@ -86,13 +86,15 @@ See [`examples`](examples) for commands, dialogs, and complete gamemodes.
 | `OMPPHP_SLOW_CALLBACK_MS` | Disabled | Log callbacks that take at least this many milliseconds; set it to a positive number |
 | `OMPPHP_WORKERS` | `4` | Number of isolated PHP workers |
 | `OMPPHP_TASK_QUEUE` | `256` | Pending tasks allowed per worker |
+| `OMPPHP_NATIVE_WORKERS` | `8` | Go workers used by native async providers |
+| `OMPPHP_NATIVE_QUEUE` | `256` | Pending native async operations |
 | `OMPPHP_COMPLETION_QUEUE` | `512` | Results waiting for the main runtime |
 | `OMPPHP_ACTOR_MAILBOX` | `64` | Pending calls allowed per actor |
 | `OMPPHP_TRANSFER_MAX_DEPTH` | `32` | Maximum nested payload depth |
 | `OMPPHP_TRANSFER_MAX_BYTES` | `1048576` | Maximum payload size in bytes |
 | `OMPPHP_WORKER_BOOTSTRAP` | `vendor/autoload.php` beside the entry file | Composer autoloader used by workers |
 
-Gamemode state lives in one long-running, serialized PHP runtime. Async tasks and actors run in isolated workers; they return data to the main runtime and cannot call open.mp directly.
+Gamemode state lives in one serialized PHP runtime. PHP tasks and actors use isolated Goro workers, while native async providers use a separate Go worker pool. Results return to the main runtime, and worker PHP cannot call open.mp directly.
 
 The runtime tracks callback dispatches, failures, total execution time, and the longest callback internally.
 

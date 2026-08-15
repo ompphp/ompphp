@@ -100,7 +100,8 @@ tasks:
   test:stress:
     desc: Run high-volume concurrency tests
     cmds:
-      - go test -race -run 'HighVolume|SeparateWorker' ./internal/concurrency ./internal/runtime
+      - go test -race -count=1 ./internal/concurrency
+      - go test -race -count=1 -run SeparateWorker ./internal/runtime
 
   test:soak:
     desc: Run the one-minute scheduler lifecycle and leak soak test

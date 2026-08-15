@@ -59,4 +59,18 @@ Async::run(CalculatePath::class, $request)
 
 Workers cannot call open.mp. They keep separate PHP state and load the gamemode's `vendor/autoload.php`, not `gamemode.php`.
 
-Use `Omp\Concurrency\Actor` for persistent worker-local state and `Omp\Timer` for callbacks on the main runtime. `Future` deliberately has no `await()` method: blocking the main runtime would also block completion delivery.
+Use `ActorPool` when the same stateful job needs several parallel shards:
+
+```php
+use Omp\Concurrency\ActorPool;
+
+$streamer = ActorPool::spawn(StreamerShard::class, count: 4, constructorData: $entities);
+$streamer->call($playerId, 'playerMoved', $position)
+    ->then(static function (array $changes): void {
+        // Apply stream-in and stream-out changes here.
+    });
+```
+
+`actor($shard)` selects a shard by index. `actorFor($key)` and `call($key, ...)` consistently map an integer or string key to one shard. Each shard processes calls in order, while different shards can run concurrently.
+
+Use `Omp\Timer` for callbacks on the main runtime. `Future` deliberately has no `await()` method: blocking the main runtime would also block completion delivery. Cancelling running PHP work suppresses its result but does not interrupt Goro execution; native providers receive cancellation immediately through their Go context.

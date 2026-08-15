@@ -52,7 +52,17 @@ function ompphp_native_call(string $name, mixed ...$arguments): mixed
     };
 }
 function ompphp_runtime_version(): string { return '0.1.0-test'; }
-function ompphp_api_version(): int { return 2; }
+function ompphp_api_version(): int { return 3; }
+/** @return array{int, list<array{int, int}>} */
+function ompphp_actor_pool_spawn(string $class, int $count, mixed $payload): array
+{
+    $handles = [];
+    for ($index = 0; $index < $count; $index++) { $handles[] = [10_000 + $index, 20_000 + $index]; }
+    return [30_000, $handles];
+}
+function ompphp_actor_call(int $id, string $method, mixed $payload): int { return 40_000 + $id; }
+/** @return list<int> */
+function ompphp_actor_pool_stop(int $id): array { return [50_001, 50_002, 50_003, 50_004]; }
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -136,7 +146,7 @@ try {
     NativeStub::$invalidKeys = false;
 }
 expect(NativeStub::$calls[0] === ['Player_SetHealth', [7, 90.0]]);
-expect(Runtime::apiVersion() === 2);
+expect(Runtime::apiVersion() === 3);
 expect(Runtime::version() === '0.1.0-test');
 Runtime::assertCompatible();
 
@@ -178,6 +188,17 @@ for ($index = 0; $index < 100_000; $index++) {
 }
 \Omp\Concurrency\Future::complete(9005, 0, null, false);
 expect($chainTail->isFulfilled());
+
+$pool = \Omp\Concurrency\ActorPool::spawn(stdClass::class, 4);
+expect($pool->size() === 4);
+expect($pool->actorFor('player-42') === $pool->actorFor('player-42'));
+expect(count($pool->ready()) === 4);
+expect($pool->call('player-42', 'move')->isPending());
+expect(count($pool->stop()) === 4);
+try {
+    $pool->actor(4);
+    throw new RuntimeException('An invalid actor pool shard was accepted.');
+} catch (OutOfBoundsException) {}
 
 expect(\Omp\Internal\native_call('Named_Arguments', player: 7) === true);
 expectLastNativeCall('Named_Arguments', [7]);

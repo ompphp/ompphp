@@ -1,6 +1,7 @@
 package concurrency
 
 import (
+	"context"
 	"errors"
 	"os"
 	"runtime"
@@ -45,6 +46,42 @@ func TestSchedulerHighVolume(t *testing.T) {
 	stats := s.Stats()
 	if stats.CompletedTasks != tasks || stats.FailedTasks != 0 {
 		t.Fatalf("stats = %#v", stats)
+	}
+}
+
+func TestCancellationHighVolume(t *testing.T) {
+	if testing.Short() {
+		t.Skip("high-volume cancellation test")
+	}
+	const tasks = 100_000
+	s := newTestScheduler(t, Config{Workers: 1, TaskQueue: 8, NativeWorkers: 4, NativeQueue: 1024, CompletionQueue: 8}, nil)
+	if err := s.RegisterNative("cancel", func(ctx context.Context, _ any) (any, error) { <-ctx.Done(); return nil, ctx.Err() }); err != nil {
+		t.Fatal(err)
+	}
+	for submitted := 0; submitted < tasks; {
+		id, err := s.SubmitNative("cancel", nil)
+		if errors.Is(err, ErrOverloaded) {
+			runtime.Gosched()
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !s.Cancel(id) {
+			t.Fatalf("cancel %d failed", id)
+		}
+		completion := s.Drain(1)
+		if len(completion) != 1 || !completion[0].Cancelled {
+			t.Fatalf("cancel completion = %#v", completion)
+		}
+		s.Acknowledge(id)
+		submitted++
+	}
+	s.mu.Lock()
+	remaining := len(s.futures)
+	s.mu.Unlock()
+	if remaining != 0 {
+		t.Fatalf("%d cancelled futures remain", remaining)
 	}
 }
 
@@ -134,6 +171,23 @@ func TestSchedulerSoakAndLifecycleCleanup(t *testing.T) {
 		}
 		if !s.CancelTimer(timer) {
 			t.Fatal("fresh timer could not be cancelled")
+		}
+
+		pool, shards, poolErr := s.SpawnActorPool("counter", 4, int64(0))
+		if poolErr != nil {
+			t.Fatal(poolErr)
+		}
+		for range shards {
+			completion := waitCompletion(t, s)
+			s.Acknowledge(completion.ID)
+		}
+		poolStops, poolStopErr := s.StopActorPool(pool)
+		if poolStopErr != nil {
+			t.Fatal(poolStopErr)
+		}
+		for range poolStops {
+			completion := waitCompletion(t, s)
+			s.Acknowledge(completion.ID)
 		}
 	}
 

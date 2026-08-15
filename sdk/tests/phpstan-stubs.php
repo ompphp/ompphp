@@ -26,6 +26,10 @@ function ompphp_future_timeout(int $id, int $milliseconds): void {}
 function ompphp_actor_spawn(string $class, mixed $payload): array { return [1, 2]; }
 function ompphp_actor_call(int $id, string $method, mixed $payload): int { return 1; }
 function ompphp_actor_stop(int $id): int { return 1; }
+/** @return array{int, list<array{int, int}>} */
+function ompphp_actor_pool_spawn(string $class, int $count, mixed $payload): array { return [1, [[2, 3]]]; }
+/** @return list<int> */
+function ompphp_actor_pool_stop(int $id): array { return [1]; }
 function ompphp_timer_start(int $milliseconds, bool $repeat): int { return 1; }
 function ompphp_timer_cancel(int $id): bool { return true; }
 /** @return array<string, int> */

@@ -23,6 +23,8 @@ func registerExtension() {
 		"ompphp_actor_spawn":       {Func: actorSpawn, MinArgs: 2, MaxArgs: 2},
 		"ompphp_actor_call":        {Func: actorCall, MinArgs: 3, MaxArgs: 3},
 		"ompphp_actor_stop":        {Func: actorStop, MinArgs: 1, MaxArgs: 1},
+		"ompphp_actor_pool_spawn":  {Func: actorPoolSpawn, MinArgs: 3, MaxArgs: 3},
+		"ompphp_actor_pool_stop":   {Func: actorPoolStop, MinArgs: 1, MaxArgs: 1},
 		"ompphp_timer_start":       {Func: timerStart, MinArgs: 2, MaxArgs: 2},
 		"ompphp_timer_cancel":      {Func: timerCancel, MinArgs: 1, MaxArgs: 1},
 		"ompphp_concurrency_stats": {Func: concurrencyStats, ZeroArgs: true},
@@ -233,6 +235,59 @@ func actorStop(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
 	return phpv.ZInt(id).ZVal(), nil
 }
 
+func actorPoolSpawn(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	if args[0].GetType() != phpv.ZtString {
+		return nil, fmt.Errorf("actor pool class must be a string")
+	}
+	runtime, err := schedulerFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := transferFromPHP(ctx, runtime, args[2])
+	if err != nil {
+		return nil, fmt.Errorf("actor pool constructor data: %w", err)
+	}
+	scheduler, err := runtime.ensureScheduler()
+	if err != nil {
+		return nil, err
+	}
+	poolID, handles, err := scheduler.SpawnActorPool(string(args[0].AsString(ctx)), int(args[1].AsInt(ctx)), payload)
+	if err != nil {
+		return nil, fmt.Errorf("spawn actor pool: %w", err)
+	}
+	result := phpv.NewZArray()
+	_ = result.OffsetSet(ctx, nil, phpv.ZInt(poolID).ZVal())
+	actors := phpv.NewZArray()
+	for _, handle := range handles {
+		pair := phpv.NewZArray()
+		_ = pair.OffsetSet(ctx, nil, phpv.ZInt(handle.ActorID).ZVal())
+		_ = pair.OffsetSet(ctx, nil, phpv.ZInt(handle.FutureID).ZVal())
+		_ = actors.OffsetSet(ctx, nil, pair.ZVal())
+	}
+	_ = result.OffsetSet(ctx, nil, actors.ZVal())
+	return result.ZVal(), nil
+}
+
+func actorPoolStop(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	runtime, err := schedulerFor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	scheduler, err := runtime.ensureScheduler()
+	if err != nil {
+		return nil, err
+	}
+	ids, err := scheduler.StopActorPool(uint64(args[0].AsInt(ctx)))
+	if err != nil {
+		return nil, fmt.Errorf("stop actor pool: %w", err)
+	}
+	result := phpv.NewZArray()
+	for _, id := range ids {
+		_ = result.OffsetSet(ctx, nil, phpv.ZInt(id).ZVal())
+	}
+	return result.ZVal(), nil
+}
+
 func timerStart(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
 	runtime, err := schedulerFor(ctx)
 	if err != nil {
@@ -278,9 +333,13 @@ func concurrencyStats(ctx phpv.Context, _ []*phpv.ZVal) (*phpv.ZVal, error) {
 	return transport.ToPHP(transport.Map{
 		{Key: transport.Key{String: "workers"}, Value: int64(stats.Workers)}, {Key: transport.Key{String: "busyWorkers"}, Value: stats.BusyWorkers},
 		{Key: transport.Key{String: "queuedTasks"}, Value: int64(stats.QueuedTasks)}, {Key: transport.Key{String: "runningTasks"}, Value: int64(stats.RunningTasks)},
+		{Key: transport.Key{String: "phpWorkers"}, Value: int64(stats.PHPWorkers)}, {Key: transport.Key{String: "busyPHPWorkers"}, Value: stats.BusyPHPWorkers},
+		{Key: transport.Key{String: "queuedPHPTasks"}, Value: int64(stats.QueuedPHPTasks)}, {Key: transport.Key{String: "nativeWorkers"}, Value: int64(stats.NativeWorkers)},
+		{Key: transport.Key{String: "busyNativeWorkers"}, Value: stats.BusyNativeWorkers}, {Key: transport.Key{String: "queuedNativeTasks"}, Value: int64(stats.QueuedNativeTasks)},
 		{Key: transport.Key{String: "completedTasks"}, Value: int64(stats.CompletedTasks)}, {Key: transport.Key{String: "failedTasks"}, Value: int64(stats.FailedTasks)},
 		{Key: transport.Key{String: "cancelledTasks"}, Value: int64(stats.CancelledTasks)}, {Key: transport.Key{String: "timedOutTasks"}, Value: int64(stats.TimedOutTasks)},
-		{Key: transport.Key{String: "actors"}, Value: int64(stats.Actors)}, {Key: transport.Key{String: "queuedActorMessages"}, Value: int64(stats.QueuedActorMessages)},
+		{Key: transport.Key{String: "actors"}, Value: int64(stats.Actors)}, {Key: transport.Key{String: "actorPools"}, Value: int64(stats.ActorPools)},
+		{Key: transport.Key{String: "queuedActorMessages"}, Value: int64(stats.QueuedActorMessages)}, {Key: transport.Key{String: "pendingFutures"}, Value: int64(stats.PendingFutures)},
 		{Key: transport.Key{String: "timers"}, Value: int64(stats.Timers)}, {Key: transport.Key{String: "completionQueue"}, Value: int64(stats.CompletionQueue)},
 	}, runtime.transferLimits)
 }

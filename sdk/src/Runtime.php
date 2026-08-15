@@ -6,7 +6,7 @@ namespace Omp;
 
 final class Runtime
 {
-    public const REQUIRED_API_VERSION = 2;
+    public const REQUIRED_API_VERSION = 3;
 
     public static function version(): string
     {
