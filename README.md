@@ -3,6 +3,7 @@
 `ompphp` runs open.mp gamemodes written in PHP. It embeds [Goro](https://github.com/KarpelesLab/goro) in the server component, so production servers don't need a separate PHP installation.
 
 The PHP SDK exposes the open.mp API and events through bindings generated from the official C API metadata.
+Async tasks and actors run in isolated PHP workers, then deliver their results to the main gamemode runtime.
 
 ## Requirements
 
@@ -83,8 +84,15 @@ See [`examples`](examples) for commands, dialogs, and complete gamemodes.
 | --- | --- | --- |
 | `OMPPHP_ENTRY` | `gamemode.php` | Gamemode entry file, relative to the server directory |
 | `OMPPHP_SLOW_CALLBACK_MS` | Disabled | Log callbacks that take at least this many milliseconds; set it to a positive number |
+| `OMPPHP_WORKERS` | `4` | Number of isolated PHP workers |
+| `OMPPHP_TASK_QUEUE` | `256` | Pending tasks allowed per worker |
+| `OMPPHP_COMPLETION_QUEUE` | `512` | Results waiting for the main runtime |
+| `OMPPHP_ACTOR_MAILBOX` | `64` | Pending calls allowed per actor |
+| `OMPPHP_TRANSFER_MAX_DEPTH` | `32` | Maximum nested payload depth |
+| `OMPPHP_TRANSFER_MAX_BYTES` | `1048576` | Maximum payload size in bytes |
+| `OMPPHP_WORKER_BOOTSTRAP` | `vendor/autoload.php` beside the entry file | Composer autoloader used by workers |
 
-PHP runs in one long-lived, serialized Goro runtime. open.mp callbacks are synchronous, and PHP state persists between events.
+Gamemode state lives in one long-running, serialized PHP runtime. Async tasks and actors run in isolated workers; they return data to the main runtime and cannot call open.mp directly.
 
 The runtime tracks callback dispatches, failures, total execution time, and the longest callback internally.
 
@@ -105,6 +113,8 @@ task e2e
 The end-to-end test downloads a pinned x86-64 artifact from the open.mp build workflow. To test another workflow run, set both `OPENMP_WORKFLOW_RUN` and `OPENMP_ARTIFACT_SHA256`; the download fails if the checksum doesn't match.
 
 Use `task component:host` for a native-architecture diagnostic build.
+
+Go integrations can register cancellable background operations with `async.Register`. PHP starts them through `Async::native()` and receives the result through a `Future` on the main runtime.
 
 ### Generated bindings
 

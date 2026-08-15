@@ -92,13 +92,23 @@ tasks:
     cmds:
       - go test -race -short -timeout=3m ./...
 
+  benchmark:
+    desc: Run concurrency and transport benchmarks
+    cmds:
+      - go test -run '^$' -bench . ./internal/concurrency ./internal/transport ./internal/runtime
+
+  test:stress:
+    desc: Run high-volume concurrency tests
+    cmds:
+      - go test -race -run 'HighVolume|SeparateWorker' ./internal/concurrency ./internal/runtime
+
   check:
     cmds:
       - task: sdk:test
       - task: examples:test
       - task: test:race
       - task: generate:check
-      - test -z "$(gofmt -l cmd internal tools)"
+      - test -z "$(gofmt -l async cmd internal tools)"
       - go vet ./...
       - git diff --check
 

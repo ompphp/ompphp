@@ -52,7 +52,7 @@ function ompphp_native_call(string $name, mixed ...$arguments): mixed
     };
 }
 function ompphp_runtime_version(): string { return '0.1.0-test'; }
-function ompphp_api_version(): int { return 1; }
+function ompphp_api_version(): int { return 2; }
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
@@ -136,9 +136,40 @@ try {
     NativeStub::$invalidKeys = false;
 }
 expect(NativeStub::$calls[0] === ['Player_SetHealth', [7, 90.0]]);
-expect(Runtime::apiVersion() === 1);
+expect(Runtime::apiVersion() === 2);
 expect(Runtime::version() === '0.1.0-test');
 Runtime::assertCompatible();
+
+$futureValue = 0;
+$futureFinally = false;
+$future = \Omp\Concurrency\Future::fromHandle(9001);
+$chained = $future->then(static fn (int $value): int => $value * 2)
+    ->finally(static function () use (&$futureFinally): void { $futureFinally = true; });
+$chained->then(static function (mixed $value) use (&$futureValue): void { $futureValue = $value; });
+\Omp\Concurrency\Future::complete(9001, 21, null, false);
+expect($future->isFulfilled());
+expect($chained->isFulfilled());
+expect($futureValue === 42 && $futureFinally);
+$lateValue = 0;
+$future->then(static function (int $value) use (&$lateValue): void { $lateValue = $value; });
+expect($lateValue === 21);
+
+$remoteCaught = false;
+$failed = \Omp\Concurrency\Future::fromHandle(9002);
+$failed->catch(static function (\Throwable $error) use (&$remoteCaught): void {
+    $remoteCaught = $error instanceof \Omp\Concurrency\RemoteTaskException
+        && str_contains($error->getMessage(), 'worker failed');
+});
+\Omp\Concurrency\Future::complete(9002, null, ['class' => 'RuntimeException', 'message' => 'worker failed'], false);
+expect($failed->isRejected() && $remoteCaught);
+
+$inner = \Omp\Concurrency\Future::fromHandle(9004);
+$outer = \Omp\Concurrency\Future::fromHandle(9003);
+$flattened = $outer->then(static fn (): \Omp\Concurrency\Future => $inner);
+\Omp\Concurrency\Future::complete(9003, null, null, false);
+expect($flattened->isPending());
+\Omp\Concurrency\Future::complete(9004, 'done', null, false);
+expect($flattened->isFulfilled());
 
 expect(\Omp\Internal\native_call('Named_Arguments', player: 7) === true);
 expectLastNativeCall('Named_Arguments', [7]);

@@ -2,6 +2,7 @@
 
 - `basic` welcomes connecting players.
 - `commands` implements `/heal` and `/m4` using the generated public API.
+- `concurrency` runs an isolated task, keeps state in an actor, and starts a timer.
 - `dialog` opens a dialog on connect and handles its response.
 - `grandlarc` is a larger, multi-file port of the classic Grand Larceny
   gamemode, including its complete city spawn table.

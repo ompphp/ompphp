@@ -20,6 +20,105 @@ function api_version(): int
     return \ompphp_api_version();
 }
 
+function runtime_context(): string
+{
+    return \ompphp_runtime_context();
+}
+
+function async_run(string $class, mixed $payload): int
+{
+    try {
+        return \ompphp_async_run($class, $payload);
+    } catch (\Throwable $error) {
+        if (str_contains($error->getMessage(), 'scheduler queue is full')) {
+            throw new \Omp\Concurrency\SchedulerOverloadedException('The async task queue is full.', previous: $error);
+        }
+        throw $error;
+    }
+}
+
+function async_native(string $name, mixed $payload): int
+{
+    try {
+        return \ompphp_async_native($name, $payload);
+    } catch (\Throwable $error) {
+        if (str_contains($error->getMessage(), 'scheduler queue is full')) {
+            throw new \Omp\Concurrency\SchedulerOverloadedException('The async task queue is full.', previous: $error);
+        }
+        throw $error;
+    }
+}
+
+function future_cancel(int $id): bool
+{
+    return \ompphp_future_cancel($id);
+}
+
+function future_timeout(int $id, int $milliseconds): void
+{
+    \ompphp_future_timeout($id, $milliseconds);
+}
+
+/** @return array{int, int} */
+function actor_spawn(string $class, mixed $payload): array
+{
+    try {
+        return \ompphp_actor_spawn($class, $payload);
+    } catch (\Throwable $error) {
+        if (str_contains($error->getMessage(), 'scheduler queue is full')) {
+            throw new \Omp\Concurrency\SchedulerOverloadedException('The async task queue is full.', previous: $error);
+        }
+        throw $error;
+    }
+}
+
+function actor_call(int $id, string $method, mixed $payload): int
+{
+    try {
+        return \ompphp_actor_call($id, $method, $payload);
+    } catch (\Throwable $error) {
+        if (str_contains($error->getMessage(), 'actor mailbox is full')) {
+            throw new \Omp\Concurrency\ActorMailboxFullException('The actor mailbox is full.', previous: $error);
+        }
+        if (str_contains($error->getMessage(), 'scheduler queue is full')) {
+            throw new \Omp\Concurrency\SchedulerOverloadedException('The async task queue is full.', previous: $error);
+        }
+        throw $error;
+    }
+}
+
+function actor_stop(int $id): int
+{
+    return \ompphp_actor_stop($id);
+}
+
+function timer_start(int $milliseconds, bool $repeat): int
+{
+    return \ompphp_timer_start($milliseconds, $repeat);
+}
+
+function timer_cancel(int $id): bool
+{
+    return \ompphp_timer_cancel($id);
+}
+
+/** @return array<string, int> */
+function concurrency_stats(): array
+{
+    return \ompphp_concurrency_stats();
+}
+
+/** @param array{class?: string, message?: string, file?: string, line?: int, trace?: string, worker?: int, task?: int}|null $error */
+function complete_future(int $id, mixed $value, ?array $error, bool $cancelled): void
+{
+    \Omp\Concurrency\Future::complete($id, $value, $error, $cancelled);
+}
+
+function fire_timer(int $id): void
+{
+    \Omp\Timer::fire($id);
+}
+
 /** @return array<string, list<string>> */
 function load_composer_prefixes(string $path): array
 {

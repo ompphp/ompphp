@@ -4,5 +4,6 @@
   "license": "MPL-2.0",
   "repositories": [{ "type": "artifact", "url": "packages" }],
   "require": { "ompphp/sdk": "0.1.0-beta.1" },
+  "autoload": { "psr-4": { "OmpPhp\\E2E\\": "src/" } },
   "config": { "platform": { "php": "8.2.0" } }
 }

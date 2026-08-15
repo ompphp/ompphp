@@ -20,6 +20,7 @@ try {
     Copy-Item (Join-Path $PSScriptRoot '../build/ompphp.dll') (Join-Path $serverDir 'components/ompphp.dll')
     Copy-Item (Join-Path $PSScriptRoot 'fixtures/e2e/gamemode.php') (Join-Path $serverDir 'gamemode.php')
     Copy-Item (Join-Path $PSScriptRoot 'fixtures/e2e/composer.json') (Join-Path $serverDir 'composer.json')
+    Copy-Item -Recurse (Join-Path $PSScriptRoot 'fixtures/e2e/src') (Join-Path $serverDir 'src')
     $packagesDir = Join-Path $serverDir 'packages'
     New-Item -ItemType Directory -Path $packagesDir | Out-Null
     php -r "exit(extension_loaded('zip') ? 0 : 1);"
@@ -62,7 +63,10 @@ try {
         'PHP handler for Tick failed:',
         'RuntimeException: OMPPHP_E2E_EXPECTED_FAILURE',
         'Stack trace:',
-        'OMPPHP_E2E_TICK'
+        'OMPPHP_E2E_TICK',
+        'OMPPHP_E2E_ASYNC',
+        'OMPPHP_E2E_ACTOR',
+        'OMPPHP_E2E_TIMER'
     )) {
         if (!$log.Contains($marker)) {
             Write-Host $log

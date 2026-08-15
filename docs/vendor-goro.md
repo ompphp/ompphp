@@ -10,6 +10,7 @@ The patch:
 - keeps Goro virtual paths separate from Windows drive-qualified paths, allowing relative includes to resolve from the server's working directory
 - uses Win32 file-time and disk-space APIs where equivalents exist
 - returns platform-feature failures to PHP for unsupported Unix operations such as syslog and process priority
+- avoids mutating shared scalar values during dereferencing so isolated Goro runtimes can execute concurrently
 
 ## Update Goro
 
@@ -20,7 +21,8 @@ After changing the Goro version, run these commands from the repository root:
 ```sh
 go mod vendor
 patch -p1 < third_party/goro-windows.patch
-gofmt -w vendor/github.com/KarpelesLab/goro/core/stream \
+gofmt -w vendor/github.com/KarpelesLab/goro/core/phpv \
+  vendor/github.com/KarpelesLab/goro/core/stream \
   vendor/github.com/KarpelesLab/goro/ext/standard \
   vendor/github.com/KarpelesLab/goro/ext/spl
 task check
