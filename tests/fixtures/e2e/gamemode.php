@@ -13,6 +13,11 @@ use Omp\Value\KeyState;
 use Omp\Value\Quaternion;
 use Omp\Value\Vector3;
 use Omp\Value\VehicleDamageStatus;
+use Omp\Async;
+use Omp\Concurrency\Actor as WorkerActor;
+use Omp\Timer;
+use OmpPhp\E2E\CounterActor;
+use OmpPhp\E2E\DoubleTask;
 
 Runtime::assertCompatible();
 
@@ -40,6 +45,24 @@ if (
 
 Core::log('OMPPHP_E2E_READY');
 Core::log('OMPPHP_E2E_SDK');
+
+Async::run(DoubleTask::class, 21)->then(static function (mixed $value): void {
+    if ($value === 42) {
+        Core::log('OMPPHP_E2E_ASYNC');
+    }
+});
+
+$counter = WorkerActor::spawn(CounterActor::class, 10);
+$counter->call('add', 1);
+$counter->call('add', 2)->then(static function (mixed $value): void {
+    if ($value === 13) {
+        Core::log('OMPPHP_E2E_ACTOR');
+    }
+});
+
+Timer::after(10, static function (): void {
+    Core::log('OMPPHP_E2E_TIMER');
+});
 
 Handlers::tick(static function (): void {
     if (empty($GLOBALS['ompphp_e2e_failure'])) {

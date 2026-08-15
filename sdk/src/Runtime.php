@@ -6,7 +6,7 @@ namespace Omp;
 
 final class Runtime
 {
-    public const REQUIRED_API_VERSION = 1;
+    public const REQUIRED_API_VERSION = 2;
 
     public static function version(): string
     {
@@ -16,6 +16,21 @@ final class Runtime
     public static function apiVersion(): int
     {
         return \Omp\Internal\api_version();
+    }
+
+    public static function isMain(): bool
+    {
+        return \Omp\Internal\runtime_context() === 'main';
+    }
+
+    public static function isWorker(): bool
+    {
+        return \Omp\Internal\runtime_context() === 'worker';
+    }
+
+    public static function isActor(): bool
+    {
+        return \Omp\Internal\runtime_context() === 'actor';
     }
 
     public static function assertCompatible(): void

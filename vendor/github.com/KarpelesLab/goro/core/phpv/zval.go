@@ -131,15 +131,18 @@ func (z *ZVal) ZVal() *ZVal {
 
 // Returns actual zval, dropping status of reference
 func (z *ZVal) Nude() *ZVal {
-	var res *ZVal
 	switch v := z.v.(type) {
 	case *ZVal:
-		res = v.Nude()
+		res := v.Nude()
+		if res.Name == z.Name {
+			return res
+		}
+		res = res.Dup()
+		res.Name = z.Name
+		return res
 	default:
-		res = z
+		return z
 	}
-	res.Name = z.Name
-	return res
 }
 
 func (z *ZVal) Dup() *ZVal {

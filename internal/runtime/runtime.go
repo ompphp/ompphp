@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/KarpelesLab/goro/core/ini"
@@ -24,10 +26,12 @@ import (
 	_ "github.com/KarpelesLab/goro/ext/spl"
 	_ "github.com/KarpelesLab/goro/ext/standard"
 
+	oconcurrency "github.com/ompphp/ompphp/internal/concurrency"
 	"github.com/ompphp/ompphp/internal/native"
+	"github.com/ompphp/ompphp/internal/transport"
 )
 
-const APIVersion = 1
+const APIVersion = 2
 
 var Version = "0.1.0-dev"
 
@@ -37,14 +41,23 @@ var gatewayStateKey = phpv.NewStateKey("ompphp native gateway")
 type Logger interface{ Printf(string, ...any) }
 
 type Runtime struct {
-	mu      sync.Mutex
-	global  *phpctx.Global
-	process *phpctx.Process
-	logger  Logger
-	closed  bool
-	loaded  bool
-	stats   Stats
-	slow    time.Duration
+	parent         context.Context
+	mu             sync.Mutex
+	global         *phpctx.Global
+	process        *phpctx.Process
+	executor       *mainExecutor
+	logger         Logger
+	closed         bool
+	closing        atomic.Bool
+	loaded         bool
+	stats          Stats
+	slow           time.Duration
+	entryDir       string
+	schedulerMu    sync.Mutex
+	scheduler      *oconcurrency.Scheduler
+	workerStart    chan struct{}
+	startOnce      sync.Once
+	transferLimits transport.Limits
 }
 
 type Stats struct {
@@ -59,24 +72,42 @@ func New(parent context.Context, gateway native.Gateway, logger Logger) *Runtime
 	p := phpctx.NewProcess("ompphp")
 	global := phpctx.NewGlobal(parent, p, ini.New())
 	global.SetState(gatewayStateKey, gateway)
-	return &Runtime{global: global, process: p, logger: logger, slow: slowCallbackThreshold()}
+	r := &Runtime{
+		parent: parent, global: global, process: p, logger: logger, slow: slowCallbackThreshold(), workerStart: make(chan struct{}),
+		transferLimits: transport.Limits{
+			MaxDepth: envPositiveInt("OMPPHP_TRANSFER_MAX_DEPTH", transport.DefaultMaxDepth),
+			MaxBytes: envPositiveInt("OMPPHP_TRANSFER_MAX_BYTES", transport.DefaultMaxBytes),
+		},
+	}
+	r.executor = newMainExecutor(global)
+	global.SetState(runtimeStateKey, r)
+	global.SetState(contextStateKey, contextMain)
+	return r
 }
 
 func (r *Runtime) Load(entry string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.closed {
-		return errors.New("PHP runtime is shut down")
-	}
-	if r.loaded {
-		return errors.New("PHP gamemode is already loaded")
-	}
-	quoted := strings.ReplaceAll(strings.ReplaceAll(entry, "\\", "\\\\"), "'", "\\'")
-	if _, err := r.global.DoString(r.global, phpv.ZString("require '"+quoted+"';")); err != nil {
-		return fmt.Errorf("load PHP gamemode %q: %w", entry, err)
-	}
-	r.loaded = true
-	return nil
+	defer r.startOnce.Do(func() { close(r.workerStart) })
+	return r.executor.run(func(global *phpctx.Global) error {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.closed {
+			return errRuntimeClosed
+		}
+		if r.loaded {
+			return errors.New("PHP gamemode is already loaded")
+		}
+		absolute, err := filepath.Abs(entry)
+		if err != nil {
+			return fmt.Errorf("resolve PHP gamemode %q: %w", entry, err)
+		}
+		r.entryDir = filepath.Dir(absolute)
+		quoted := strings.ReplaceAll(strings.ReplaceAll(entry, "\\", "\\\\"), "'", "\\'")
+		if _, err := global.DoString(global, phpv.ZString("require '"+quoted+"';")); err != nil {
+			return fmt.Errorf("load PHP gamemode %q: %w", entry, err)
+		}
+		r.loaded = true
+		return nil
+	})
 }
 
 // Dispatch executes on the caller's goroutine. The mutex is the single entry
@@ -86,52 +117,58 @@ func (r *Runtime) Dispatch(event string, arguments ...any) (result bool) {
 }
 
 func (r *Runtime) DispatchDefault(event string, defaultResult bool, arguments ...any) (result bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	started := time.Now()
-	defer func() {
-		elapsed := time.Since(started)
-		r.stats.Dispatches++
-		r.stats.TotalTime += elapsed
-		if elapsed > r.stats.MaxTime {
-			r.stats.MaxTime = elapsed
-		}
-		if r.slow > 0 && elapsed >= r.slow && r.logger != nil {
-			r.logger.Printf("slow PHP callback %s took %s", event, elapsed.Round(time.Microsecond))
-		}
-	}()
-	if r.closed {
-		return defaultResult
-	}
-	fn, err := r.global.GetFunction(r.global, phpv.ZString("Omp\\Internal\\dispatch"))
-	if err != nil {
-		return defaultResult
-	}
-	values := phpv.NewZArray()
-	for index, argument := range arguments {
-		converted, err := toPHP(argument)
-		if err != nil {
-			r.stats.Failures++
-			if r.logger != nil {
-				r.logger.Printf("PHP event %s argument %d: %v", event, index+1, err)
+	result = defaultResult
+	_ = r.executor.run(func(global *phpctx.Global) error {
+		r.pumpGlobal(global, 256)
+		started := time.Now()
+		defer func() {
+			elapsed := time.Since(started)
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			r.stats.Dispatches++
+			r.stats.TotalTime += elapsed
+			if elapsed > r.stats.MaxTime {
+				r.stats.MaxTime = elapsed
 			}
-			return defaultResult
+			if r.slow > 0 && elapsed >= r.slow && r.logger != nil {
+				r.logger.Printf("slow PHP callback %s took %s", event, elapsed.Round(time.Microsecond))
+			}
+		}()
+		fn, err := global.GetFunction(global, phpv.ZString("Omp\\Internal\\dispatch"))
+		if err != nil {
+			return nil
 		}
-		_ = values.OffsetSet(r.global, nil, converted)
-	}
-	args := []*phpv.ZVal{phpv.ZString(event).ZVal(), values.ZVal(), phpv.ZBool(defaultResult).ZVal()}
-	value, err := fn.Call(r.global, args)
-	if err != nil {
-		r.stats.Failures++
-		if r.logger != nil {
-			r.logger.Printf("PHP handler for %s failed: %v", event, err)
+		values := phpv.NewZArray()
+		for index, argument := range arguments {
+			converted, err := toPHP(argument)
+			if err != nil {
+				r.mu.Lock()
+				r.stats.Failures++
+				r.mu.Unlock()
+				if r.logger != nil {
+					r.logger.Printf("PHP event %s argument %d: %v", event, index+1, err)
+				}
+				return nil
+			}
+			_ = values.OffsetSet(global, nil, converted)
 		}
-		return defaultResult
-	}
-	if value == nil || value.GetType() == phpv.ZtNull {
-		return defaultResult
-	}
-	return bool(value.AsBool(r.global))
+		args := []*phpv.ZVal{phpv.ZString(event).ZVal(), values.ZVal(), phpv.ZBool(defaultResult).ZVal()}
+		value, err := fn.Call(global, args)
+		if err != nil {
+			r.mu.Lock()
+			r.stats.Failures++
+			r.mu.Unlock()
+			if r.logger != nil {
+				r.logger.Printf("PHP handler for %s failed: %v", event, err)
+			}
+			return nil
+		}
+		if value != nil && value.GetType() != phpv.ZtNull {
+			result = bool(value.AsBool(global))
+		}
+		return nil
+	})
+	return result
 }
 
 func (r *Runtime) Stats() Stats {
@@ -153,13 +190,81 @@ func slowCallbackThreshold() time.Duration {
 }
 
 func (r *Runtime) Close() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.closed {
+	if !r.closing.CompareAndSwap(false, true) {
 		return
 	}
-	r.global.RunShutdownFunctions()
-	r.closed = true
+	r.schedulerMu.Lock()
+	if r.scheduler != nil {
+		r.scheduler.Close()
+		r.scheduler = nil
+	}
+	r.schedulerMu.Unlock()
+	r.executor.close(func(global *phpctx.Global) {
+		global.RunShutdownFunctions()
+		_ = global.Close()
+		r.mu.Lock()
+		r.closed = true
+		r.mu.Unlock()
+	})
+}
+
+func (r *Runtime) Pump(limit int) {
+	_ = r.executor.run(func(global *phpctx.Global) error {
+		r.pumpGlobal(global, limit)
+		return nil
+	})
+}
+
+func (r *Runtime) pumpGlobal(global *phpctx.Global, limit int) {
+	r.schedulerMu.Lock()
+	scheduler := r.scheduler
+	r.schedulerMu.Unlock()
+	if scheduler == nil {
+		return
+	}
+	for _, completion := range scheduler.Drain(limit) {
+		if completion.Kind == oconcurrency.CompletionTimer {
+			fn, err := global.GetFunction(global, phpv.ZString("Omp\\Internal\\fire_timer"))
+			if err == nil {
+				_, err = fn.Call(global, []*phpv.ZVal{phpv.ZInt(completion.ID).ZVal()})
+			}
+			if err != nil && r.logger != nil {
+				r.logger.Printf("timer %d failed: %v", completion.ID, err)
+			}
+			continue
+		}
+		r.callCompletion(global, "Omp\\Internal\\complete_future", completion.ID, completion.Value, completion.Error, completion.Cancelled)
+		scheduler.Acknowledge(completion.ID)
+	}
+}
+
+func (r *Runtime) callCompletion(global *phpctx.Global, name string, id uint64, value any, remote *oconcurrency.RemoteError, cancelled bool) {
+	fn, err := global.GetFunction(global, phpv.ZString(name))
+	if err != nil {
+		return
+	}
+	converted, err := transport.ToPHP(value, r.transferLimits)
+	if err != nil {
+		converted = phpv.ZNULL.ZVal()
+		remote = &oconcurrency.RemoteError{Class: "TransferError", Message: err.Error(), TaskID: id}
+	}
+	errorValue := any(nil)
+	if remote != nil {
+		errorValue = transport.Map{
+			{Key: transport.Key{String: "class"}, Value: remote.Class},
+			{Key: transport.Key{String: "message"}, Value: remote.Message},
+			{Key: transport.Key{String: "file"}, Value: remote.File},
+			{Key: transport.Key{String: "line"}, Value: remote.Line},
+			{Key: transport.Key{String: "trace"}, Value: remote.Trace},
+			{Key: transport.Key{String: "worker"}, Value: int64(remote.WorkerID)},
+			{Key: transport.Key{String: "task"}, Value: int64(remote.TaskID)},
+		}
+	}
+	convertedError, _ := transport.ToPHP(errorValue, r.transferLimits)
+	_, err = fn.Call(global, []*phpv.ZVal{phpv.ZInt(id).ZVal(), converted, convertedError, phpv.ZBool(cancelled).ZVal()})
+	if err != nil && r.logger != nil {
+		r.logger.Printf("concurrency completion %d failed: %v", id, err)
+	}
 }
 
 func toPHP(value any) (*phpv.ZVal, error) {

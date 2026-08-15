@@ -39,3 +39,24 @@ Handlers::playerConnect(static function (int $playerId): void {
     // ...
 });
 ```
+
+## Concurrency
+
+`Async::run()` executes an invokable, Composer-autoloaded class in an isolated PHP worker. Its payload and result may contain only null, booleans, numbers, strings, and arrays. Future callbacks run later on the main PHP runtime, where open.mp calls are safe:
+
+```php
+use Omp\Async;
+
+Async::run(CalculatePath::class, $request)
+    ->withTimeout(1000)
+    ->then(static function (array $path): void {
+        // Apply the result to open.mp here.
+    })
+    ->catch(static function (Throwable $error): void {
+        // Handle worker errors, cancellation, and timeouts.
+    });
+```
+
+Workers cannot call open.mp. They keep separate PHP state and load the gamemode's `vendor/autoload.php`, not `gamemode.php`.
+
+Use `Omp\Concurrency\Actor` for persistent worker-local state and `Omp\Timer` for callbacks on the main runtime. `Future` deliberately has no `await()` method: blocking the main runtime would also block completion delivery.
