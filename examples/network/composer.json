@@ -1,0 +1,1 @@
+{"name":"ompphp/example-network","description":"Managed open.mp packet and RPC APIs","license":"MPL-2.0","repositories":[{"type":"path","url":"../../sdk","options":{"versions":{"ompphp/sdk":"dev-main"}}}],"require":{"ompphp/sdk":"dev-main"},"config":{"platform":{"php":"8.2.0"}}}

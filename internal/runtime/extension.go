@@ -2,7 +2,10 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/KarpelesLab/goro/core/phpctx"
 	"github.com/KarpelesLab/goro/core/phpv"
@@ -12,23 +15,223 @@ import (
 
 func registerExtension() {
 	phpctx.RegisterExt(&phpctx.Ext{Name: "ompphp", Version: Version, Functions: map[string]*phpctx.ExtFunction{
-		"ompphp_native_call":       {Func: nativeCall, MinArgs: 1, MaxArgs: -1},
-		"ompphp_runtime_version":   {Func: runtimeVersion, ZeroArgs: true},
-		"ompphp_api_version":       {Func: apiVersion, ZeroArgs: true},
-		"ompphp_runtime_context":   {Func: runtimeContext, ZeroArgs: true},
-		"ompphp_async_run":         {Func: asyncRun, MinArgs: 2, MaxArgs: 2},
-		"ompphp_async_native":      {Func: asyncNative, MinArgs: 2, MaxArgs: 2},
-		"ompphp_future_cancel":     {Func: futureCancel, MinArgs: 1, MaxArgs: 1},
-		"ompphp_future_timeout":    {Func: futureTimeout, MinArgs: 2, MaxArgs: 2},
-		"ompphp_actor_spawn":       {Func: actorSpawn, MinArgs: 2, MaxArgs: 2},
-		"ompphp_actor_call":        {Func: actorCall, MinArgs: 3, MaxArgs: 3},
-		"ompphp_actor_stop":        {Func: actorStop, MinArgs: 1, MaxArgs: 1},
-		"ompphp_actor_pool_spawn":  {Func: actorPoolSpawn, MinArgs: 3, MaxArgs: 3},
-		"ompphp_actor_pool_stop":   {Func: actorPoolStop, MinArgs: 1, MaxArgs: 1},
-		"ompphp_timer_start":       {Func: timerStart, MinArgs: 2, MaxArgs: 2},
-		"ompphp_timer_cancel":      {Func: timerCancel, MinArgs: 1, MaxArgs: 1},
-		"ompphp_concurrency_stats": {Func: concurrencyStats, ZeroArgs: true},
+		"ompphp_native_call":         {Func: nativeCall, MinArgs: 1, MaxArgs: -1},
+		"ompphp_runtime_version":     {Func: runtimeVersion, ZeroArgs: true},
+		"ompphp_api_version":         {Func: apiVersion, ZeroArgs: true},
+		"ompphp_runtime_context":     {Func: runtimeContext, ZeroArgs: true},
+		"ompphp_async_run":           {Func: asyncRun, MinArgs: 2, MaxArgs: 2},
+		"ompphp_async_native":        {Func: asyncNative, MinArgs: 2, MaxArgs: 2},
+		"ompphp_future_cancel":       {Func: futureCancel, MinArgs: 1, MaxArgs: 1},
+		"ompphp_future_timeout":      {Func: futureTimeout, MinArgs: 2, MaxArgs: 2},
+		"ompphp_actor_spawn":         {Func: actorSpawn, MinArgs: 2, MaxArgs: 2},
+		"ompphp_actor_call":          {Func: actorCall, MinArgs: 3, MaxArgs: 3},
+		"ompphp_actor_stop":          {Func: actorStop, MinArgs: 1, MaxArgs: 1},
+		"ompphp_actor_pool_spawn":    {Func: actorPoolSpawn, MinArgs: 3, MaxArgs: 3},
+		"ompphp_actor_pool_stop":     {Func: actorPoolStop, MinArgs: 1, MaxArgs: 1},
+		"ompphp_timer_start":         {Func: timerStart, MinArgs: 2, MaxArgs: 2},
+		"ompphp_timer_cancel":        {Func: timerCancel, MinArgs: 1, MaxArgs: 1},
+		"ompphp_concurrency_stats":   {Func: concurrencyStats, ZeroArgs: true},
+		"ompphp_component_get":       {Func: componentGet, MinArgs: 1, MaxArgs: 1},
+		"ompphp_component_supports":  {Func: componentSupports, MinArgs: 4, MaxArgs: 4},
+		"ompphp_component_watch":     {Func: componentWatch, MinArgs: 1, MaxArgs: 1},
+		"ompphp_component_unwatch":   {Func: componentUnwatch, MinArgs: 1, MaxArgs: 1},
+		"ompphp_component_callables": {Func: componentCallables, MinArgs: 1, MaxArgs: 1},
+		"ompphp_component_invoke":    {Func: componentInvoke, MinArgs: 3, MaxArgs: 3},
+		"ompphp_network_subscribe":   {Func: networkSubscribe, MinArgs: 4, MaxArgs: 4},
+		"ompphp_network_unsubscribe": {Func: networkUnsubscribe, MinArgs: 1, MaxArgs: 1},
+		"ompphp_network_send":        {Func: networkSend, MinArgs: 7, MaxArgs: 7},
+		"ompphp_network_types":       {Func: networkTypes, ZeroArgs: true},
+		"ompphp_network_stats":       {Func: networkStats, ZeroArgs: true},
 	}})
+}
+
+func extendedGateway(ctx phpv.Context) (native.ExtendedGateway, error) {
+	if currentContext(ctx) != contextMain {
+		return nil, fmt.Errorf("extended open.mp APIs are unavailable in a %s runtime", currentContext(ctx))
+	}
+	gateway, ok := ctx.Global().State(gatewayStateKey).(native.ExtendedGateway)
+	if !ok || gateway == nil {
+		return nil, native.ErrUnavailable
+	}
+	return gateway, nil
+}
+
+func parseUID(ctx phpv.Context, value *phpv.ZVal) (uint64, error) {
+	text := string(value.AsString(ctx))
+	uid, err := strconv.ParseUint(strings.TrimPrefix(text, "0x"), 16, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid hexadecimal UID %q", text)
+	}
+	return uid, nil
+}
+
+func componentGet(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	gateway, err := extendedGateway(ctx)
+	if err != nil {
+		return nil, err
+	}
+	uid, err := parseUID(ctx, args[0])
+	if err != nil {
+		return nil, err
+	}
+	info, found := gateway.Component(uid)
+	if !found {
+		return phpv.ZNULL.ZVal(), nil
+	}
+	return toPHP([]any{fmt.Sprintf("%016x", info.UID), info.Name, info.Major, info.Minor, info.Patch, info.PreRel, info.Type})
+}
+
+func componentSupports(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	gateway, err := extendedGateway(ctx)
+	if err != nil {
+		return nil, err
+	}
+	componentUID, err := parseUID(ctx, args[0])
+	if err != nil {
+		return nil, err
+	}
+	interfaceUID, err := parseUID(ctx, args[1])
+	if err != nil {
+		return nil, err
+	}
+	ok := gateway.ComponentSupports(componentUID, interfaceUID, uint32(args[2].AsInt(ctx)), uint32(args[3].AsInt(ctx)))
+	return phpv.ZBool(ok).ZVal(), nil
+}
+
+func componentWatch(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	gateway, err := extendedGateway(ctx)
+	if err != nil {
+		return nil, err
+	}
+	uid, err := parseUID(ctx, args[0])
+	if err != nil {
+		return nil, err
+	}
+	token, err := gateway.ComponentWatch(uid)
+	if err != nil {
+		return nil, err
+	}
+	return phpv.ZInt(token).ZVal(), nil
+}
+
+func componentUnwatch(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	gateway, err := extendedGateway(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return phpv.ZBool(gateway.ComponentUnwatch(uint64(args[0].AsInt(ctx)))).ZVal(), nil
+}
+
+func callableDescriptorValue(descriptor native.CallableDescriptor) []any {
+	parameters := make([]any, 0, len(descriptor.Parameters))
+	for _, parameter := range descriptor.Parameters {
+		parameters = append(parameters, []any{parameter.Name, int64(parameter.Type), parameter.Optional, parameter.HasDefault, parameter.Default})
+	}
+	return []any{descriptor.Name, descriptor.Documentation, parameters, int64(descriptor.ReturnType), descriptor.Deprecated, descriptor.MayCallback}
+}
+
+func componentCallables(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	gateway, err := extendedGateway(ctx)
+	if err != nil {
+		return nil, err
+	}
+	uid, err := parseUID(ctx, args[0])
+	if err != nil {
+		return nil, err
+	}
+	descriptors, err := gateway.ComponentCallables(uid)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]any, 0, len(descriptors))
+	for _, descriptor := range descriptors {
+		result = append(result, callableDescriptorValue(descriptor))
+	}
+	return toPHP(result)
+}
+
+func componentInvoke(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	gateway, err := extendedGateway(ctx)
+	if err != nil {
+		return nil, err
+	}
+	uid, err := parseUID(ctx, args[0])
+	if err != nil {
+		return nil, err
+	}
+	name := string(args[1].AsString(ctx))
+	converted, err := fromPHP(ctx, args[2])
+	if err != nil {
+		return nil, fmt.Errorf("callable %s arguments: %w", name, err)
+	}
+	arguments, ok := converted.([]any)
+	if !ok {
+		return nil, fmt.Errorf("callable arguments must be an array")
+	}
+	result, err := gateway.ComponentInvoke(uid, name, arguments)
+	if err != nil {
+		var callableError *native.CallableError
+		if errors.As(err, &callableError) {
+			return toPHP([]any{false, callableError.Code, callableError.Message, nil})
+		}
+		return nil, fmt.Errorf("invoke %s: %w", name, err)
+	}
+	return toPHP([]any{true, int64(0), "", result})
+}
+
+func networkSubscribe(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	gateway, err := extendedGateway(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := gateway.NetworkSubscribe(int32(args[0].AsInt(ctx)), int32(args[1].AsInt(ctx)), int8(args[2].AsInt(ctx)), bool(args[3].AsBool(ctx)))
+	if err != nil {
+		return nil, err
+	}
+	return phpv.ZInt(id).ZVal(), nil
+}
+
+func networkUnsubscribe(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	gateway, err := extendedGateway(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return phpv.ZBool(gateway.NetworkUnsubscribe(uint64(args[0].AsInt(ctx)))).ZVal(), nil
+}
+
+func networkSend(ctx phpv.Context, args []*phpv.ZVal) (*phpv.ZVal, error) {
+	gateway, err := extendedGateway(ctx)
+	if err != nil {
+		return nil, err
+	}
+	request := native.NetworkSendRequest{RPC: bool(args[0].AsBool(ctx)), PlayerID: int32(args[1].AsInt(ctx)), MessageID: int32(args[2].AsInt(ctx)), Data: string(args[3].AsString(ctx)), BitLength: uint32(args[4].AsInt(ctx)), Channel: int32(args[5].AsInt(ctx)), DispatchEvents: bool(args[6].AsBool(ctx))}
+	count, err := gateway.NetworkSend(request)
+	if err != nil {
+		return nil, err
+	}
+	return phpv.ZInt(count).ZVal(), nil
+}
+
+func networkTypes(ctx phpv.Context, _ []*phpv.ZVal) (*phpv.ZVal, error) {
+	gateway, err := extendedGateway(ctx)
+	if err != nil {
+		return nil, err
+	}
+	values := gateway.NetworkTypes()
+	result := make([]any, len(values))
+	for index, value := range values {
+		result[index] = value
+	}
+	return toPHP(result)
+}
+
+func networkStats(ctx phpv.Context, _ []*phpv.ZVal) (*phpv.ZVal, error) {
+	gateway, err := extendedGateway(ctx)
+	if err != nil {
+		return nil, err
+	}
+	stats := gateway.NetworkStats()
+	return toPHP([]any{stats.Subscriptions, stats.Callbacks, stats.Dropped, stats.Rejected, stats.CallbackNS})
 }
 
 func runtimeVersion(phpv.Context, []*phpv.ZVal) (*phpv.ZVal, error) {

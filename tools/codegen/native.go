@@ -24,7 +24,7 @@ func generateNative(headerPath, goPath string, m model.Model) (int, error) {
 package main
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../third_party/openmp-capi/include
+#cgo CFLAGS: -I${SRCDIR}/../../third_party/omp-capi/lib/open.mp-capi/include
 #include <stdlib.h>
 #include "ompcapi.h"
 #include "native_generated.h"

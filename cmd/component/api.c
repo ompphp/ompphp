@@ -1,4 +1,4 @@
-#include "../../third_party/openmp-capi/include/ompcapi.h"
+#include "../../third_party/omp-capi/lib/open.mp-capi/include/ompcapi.h"
 
 struct OMPAPI_t ompphp_api;
 

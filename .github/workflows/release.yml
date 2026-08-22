@@ -8,7 +8,30 @@ permissions:
   contents: write
 
 jobs:
+  windows-capi:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: egor-tensin/setup-clang@v2
+        with:
+          version: latest
+          platform: x64
+      - shell: pwsh
+        run: |
+          cmake -S third_party/omp-capi -B build/capi/windows -A x64 -T ClangCL -DOMP_CAPI_BUILD_TESTS=OFF
+          if ($LASTEXITCODE -ne 0) { throw "CAPI configure failed with exit code $LASTEXITCODE" }
+          cmake --build build/capi/windows --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw "CAPI build failed with exit code $LASTEXITCODE" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-capi
+          path: build/capi/windows/components/Release/$CAPI.dll
+          if-no-files-found: error
+
   release:
+    needs: windows-capi
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +42,10 @@ jobs:
         with:
           go-version-file: go.mod
       - uses: arduino/setup-task@v2
+      - uses: egor-tensin/setup-clang@v2
+        with:
+          version: latest
+          platform: x64
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
@@ -26,6 +53,10 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
       - run: task check
       - run: task e2e
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-capi
+          path: build/capi/windows/components/Release
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser

@@ -8,8 +8,8 @@ import (
 )
 
 func main() {
-	api := flag.String("api", "third_party/openmp-capi/apidocs/api.json", "open.mp C API metadata")
-	events := flag.String("events", "third_party/openmp-capi/apidocs/events.json", "open.mp event metadata")
+	api := flag.String("api", "third_party/omp-capi/lib/open.mp-capi/apidocs/api.json", "open.mp C API metadata")
+	events := flag.String("events", "third_party/omp-capi/lib/open.mp-capi/apidocs/events.json", "open.mp event metadata")
 	constants := flag.String("constants", "tools/codegen/data/gamemode_constants.json", "curated open.mp gamemode constants")
 	phpOut := flag.String("php-out", "sdk/src/Internal/api_generated.php", "generated low-level PHP API")
 	publicPHPOut := flag.String("public-php-out", "sdk/src/Api", "generated public PHP API directory")

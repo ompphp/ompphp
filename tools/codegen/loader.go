@@ -26,6 +26,9 @@ type rawParameter struct {
 func load(apiPath, eventsPath string) (model.Model, error) {
 	var result model.Model
 	if err := loadItems(apiPath, false, func(group string, item rawItem) {
+		if group == "ComponentInterop" || group == "Network" {
+			return
+		}
 		result.Functions = append(result.Functions, model.Function{Group: group, Name: item.Name, ReturnType: item.ReturnType, Parameters: parameters(item.Parameters)})
 	}); err != nil {
 		return result, err

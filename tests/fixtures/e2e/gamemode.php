@@ -16,6 +16,10 @@ use Omp\Value\VehicleDamageStatus;
 use Omp\Async;
 use Omp\Concurrency\Actor as WorkerActor;
 use Omp\Timer;
+use Omp\Component\Components;
+use Omp\Network\Network;
+use Omp\Network\NetworkDirection;
+use Omp\Network\NetworkResult;
 use OmpPhp\E2E\CounterActor;
 use OmpPhp\E2E\DoubleTask;
 
@@ -45,6 +49,35 @@ if (
 
 Core::log('OMPPHP_E2E_READY');
 Core::log('OMPPHP_E2E_SDK');
+
+$self = Components::require('0x4f4d505048500001');
+$networkSubscription = Network::subscribe(
+    NetworkDirection::INCOMING_RPC,
+    24,
+    static fn (): NetworkResult => NetworkResult::CONTINUE,
+);
+$componentWatch = $self->watch(static function (): void {});
+$networkStats = Network::stats();
+if (
+    $self->name !== 'ompphp'
+    || !$self->isAvailable()
+    || Network::types() === []
+    || $networkStats['subscriptions'] < 1
+    || Network::sendPacket(null, '') < 0
+    || !$networkSubscription->cancel()
+    || !$componentWatch->cancel()
+) {
+    throw new RuntimeException('Extended CAPI APIs returned unexpected data.');
+}
+Core::log('OMPPHP_E2E_EXTENDED_CAPI');
+
+$callableFixture = Components::require('4f4d505043414c4c');
+$add = $callableFixture->callables()->require('add');
+$maximum = $callableFixture->callables()->require('maximumUnsigned')->invoke();
+if ($add->invokeNamed(['left' => 20, 'right' => 22]) !== 42 || (string) $maximum !== '18446744073709551615') {
+    throw new RuntimeException('CAPI callable registry returned unexpected data.');
+}
+Core::log('OMPPHP_E2E_CALLABLES');
 
 Async::run(DoubleTask::class, 21)->then(static function (mixed $value): void {
     if ($value === 42) {

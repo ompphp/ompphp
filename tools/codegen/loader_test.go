@@ -34,3 +34,28 @@ func TestParametersClassifyCOutputPointers(t *testing.T) {
 		t.Fatalf("unexpected output classification: %#v", got)
 	}
 }
+
+func TestLoadOmitsLowLevelExtensionAPIs(t *testing.T) {
+	d := t.TempDir()
+	api := filepath.Join(d, "api.json")
+	events := filepath.Join(d, "events.json")
+	data := `{
+		"Core":[{"name":"Core_Log","ret":"bool"}],
+		"ComponentInterop":[{"name":"Component_Find","ret":"struct OMPComponentHandle*"}],
+		"Network":[{"name":"Network_Subscribe","ret":"struct OMPNetSubscription*"}]
+	}`
+	if err := os.WriteFile(api, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(events, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := load(api, events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Functions) != 1 || m.Functions[0].Name != "Core_Log" {
+		t.Fatalf("unexpected functions: %#v", m.Functions)
+	}
+}

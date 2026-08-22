@@ -18,6 +18,27 @@ try {
 
     $serverDir = Join-Path $testDir 'Server'
     Copy-Item (Join-Path $PSScriptRoot '../build/ompphp.dll') (Join-Path $serverDir 'components/ompphp.dll')
+    Copy-Item (Join-Path $PSScriptRoot '../build/ompphp-callable-fixture.dll') (Join-Path $serverDir 'components/ompphp-callable-fixture.dll')
+
+    $stockStdout = Join-Path $testDir 'stock-stdout.log'
+    $stockStderr = Join-Path $testDir 'stock-stderr.log'
+    $stockProcess = Start-Process -FilePath (Join-Path $serverDir 'omp-server.exe') -WorkingDirectory $serverDir -RedirectStandardOutput $stockStdout -RedirectStandardError $stockStderr -PassThru
+    Start-Sleep -Seconds 2
+    if (!$stockProcess.HasExited) {
+        Stop-Process -Id $stockProcess.Id -Force
+        $stockProcess.WaitForExit()
+    }
+    $stockLog = ((Get-Content -Raw $stockStdout), (Get-Content -Raw $stockStderr)) -join "`n"
+    if (!$stockLog.Contains('incompatible CAPI component')) {
+        Write-Host $stockLog
+        throw 'Stock open.mp CAPI was not rejected'
+    }
+    if ($stockLog.Contains('Successfully loaded component ompphp (')) {
+        Write-Host $stockLog
+        throw 'ompphp unexpectedly loaded with the stock open.mp CAPI'
+    }
+
+    Copy-Item (Join-Path $PSScriptRoot '../build/capi/windows/components/Release/$CAPI.dll') (Join-Path $serverDir 'components/$CAPI.dll') -Force
     Copy-Item (Join-Path $PSScriptRoot 'fixtures/e2e/gamemode.php') (Join-Path $serverDir 'gamemode.php')
     Copy-Item (Join-Path $PSScriptRoot 'fixtures/e2e/composer.json') (Join-Path $serverDir 'composer.json')
     Copy-Item -Recurse (Join-Path $PSScriptRoot 'fixtures/e2e/src') (Join-Path $serverDir 'src')
@@ -57,9 +78,11 @@ try {
 
     $log = ((Get-Content -Raw $stdout), (Get-Content -Raw $stderr)) -join "`n"
     foreach ($marker in @(
-        'Successfully loaded component ompphp',
+        'Successfully loaded component ompphp (',
         'OMPPHP_E2E_READY',
         'OMPPHP_E2E_SDK',
+        'OMPPHP_E2E_EXTENDED_CAPI',
+        'OMPPHP_E2E_CALLABLES',
         'PHP handler for Tick failed:',
         'RuntimeException: OMPPHP_E2E_EXPECTED_FAILURE',
         'Stack trace:',

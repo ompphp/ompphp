@@ -42,6 +42,8 @@ archives:
     files:
       - README.md
       - LICENSE
+      - src: 'build/capi/{{ .Os }}/components/{{ if eq .Os "windows" }}Release/{{ end }}$CAPI.{{ if eq .Os "windows" }}dll{{ else }}so{{ end }}'
+        dst: components
 
 checksum:
   name_template: checksums.txt

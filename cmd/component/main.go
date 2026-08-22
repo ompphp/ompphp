@@ -1,11 +1,12 @@
 package main
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../third_party/openmp-capi/include
+#cgo CFLAGS: -I${SRCDIR}/../../third_party/omp-capi/lib/open.mp-capi/include
 #cgo windows CFLAGS: -I${SRCDIR}/windows_compat
 #cgo linux LDFLAGS: -ldl
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include "ompcapi.h"
 
@@ -21,9 +22,51 @@ static void ompphp_free(void) { OMPPHPDispatchLifecycle(3); }
 
 #include "events_generated.h"
 
+static bool ompphp_has_extended_capi(void) {
+	return ompphp_api.ComponentInterop.Find
+		&& ompphp_api.ComponentInterop.IsValid
+		&& ompphp_api.ComponentInterop.GetUID
+		&& ompphp_api.ComponentInterop.GetName
+		&& ompphp_api.ComponentInterop.GetVersion
+		&& ompphp_api.ComponentInterop.GetType
+		&& ompphp_api.ComponentInterop.RegisterAPI
+		&& ompphp_api.ComponentInterop.UnregisterAPI
+		&& ompphp_api.ComponentInterop.QueryAPI
+		&& ompphp_api.ComponentInterop.APIIsValid
+		&& ompphp_api.ComponentInterop.Watch
+		&& ompphp_api.ComponentInterop.Unwatch
+		&& ompphp_api.ComponentInterop.RegisterCallable
+		&& ompphp_api.ComponentInterop.UnregisterCallable
+		&& ompphp_api.ComponentInterop.FindCallable
+		&& ompphp_api.ComponentInterop.CallableIsValid
+		&& ompphp_api.ComponentInterop.GetCallableCount
+		&& ompphp_api.ComponentInterop.GetCallableAt
+		&& ompphp_api.ComponentInterop.GetCallableDescriptor
+		&& ompphp_api.ComponentInterop.InvokeCallable
+		&& ompphp_api.ComponentInterop.WatchCallable
+		&& ompphp_api.ComponentInterop.UnwatchCallable
+		&& ompphp_api.Network.Subscribe
+		&& ompphp_api.Network.SubscribeAll
+		&& ompphp_api.Network.Unsubscribe
+		&& ompphp_api.Network.BufferResize
+		&& ompphp_api.Network.SendPacket
+		&& ompphp_api.Network.SendRPC
+		&& ompphp_api.Network.BroadcastPacket
+		&& ompphp_api.Network.BroadcastRPC
+		&& ompphp_api.Network.Count
+		&& ompphp_api.Network.Type;
+}
+
 static bool ompphp_initialize(void) {
 	if (ompphp_initialised) return true;
-	ompphp_initialised = omp_initialize_capi(&ompphp_api);
+	ompphp_initialised = omp_initialize_capi(&ompphp_api)
+		&& ompphp_has_extended_capi();
+	if (!ompphp_initialised) {
+		fprintf(stderr,
+			"[ompphp] incompatible CAPI component: install the bundled standalone "
+			"$CAPI and remove the stock open.mp $CAPI component\n");
+		fflush(stderr);
+	}
 	return ompphp_initialised;
 }
 

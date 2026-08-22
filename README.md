@@ -1,49 +1,45 @@
 # ompphp
 
-`ompphp` runs open.mp gamemodes written in PHP. It embeds [Goro](https://github.com/KarpelesLab/goro) in the server component, so production servers don't need a separate PHP installation.
-
-The PHP SDK exposes the open.mp API and events through bindings generated from the official C API metadata.
-Async tasks and actors run in isolated PHP workers, then deliver their results to the main gamemode runtime.
+`ompphp` runs open.mp gamemodes in embedded PHP using [Goro](https://github.com/KarpelesLab/goro). The generated SDK provides open.mp APIs and events, component callables, networking, timers, async tasks, and actors.
 
 ## Requirements
 
 - A 64-bit Linux or Windows open.mp server
-- The open.mp `$CAPI` component
 - Composer on the development machine
+- PHP 8.2 compatibility
 
-`ompphp` doesn't support older 32-bit server releases. The SDK targets PHP 8.2, the version provided by the pinned Goro revision.
+Release archives include the required extended `$CAPI`. The stock open.mp CAPI and 32-bit servers are unsupported.
 
-## Install the component
+## Installation
 
-Download the component archive for your platform from the GitHub release. Copy `ompphp.so` or `ompphp.dll` from the archive's `components` directory into the server's `components` directory.
+Copy both release components into the server, replacing its stock `$CAPI`:
 
-To build the component from source:
-
-```sh
-git clone --recurse-submodules https://github.com/ompphp/ompphp.git
-cd ompphp
-task component          # Linux x64
-task component:windows  # Windows x64, cross-compiled from Linux
+```text
+components/
+├── $CAPI.so       # $CAPI.dll on Windows
+└── ompphp.so      # ompphp.dll on Windows
 ```
 
-Build output is written to `build/`.
-
-## Install the SDK
-
-Download `ompphp-sdk_<version>.zip` from the same release and keep the archive intact in your gamemode project's `packages` directory. Install it as a Composer artifact:
+Keep `ompphp-sdk_<version>.zip` intact in your gamemode's `packages/` directory, then install it:
 
 ```sh
-mkdir -p packages
 composer config repositories.ompphp artifact packages
 composer config platform.php 8.2.0
 composer require ompphp/sdk:^0.1
 ```
 
-Run Composer on the development machine. Deploy the gamemode with its `vendor/` directory.
+Run Composer during development and deploy the resulting `vendor/` directory. Only require PHP extensions provided by Goro.
 
-Only require PHP extensions that Goro provides.
+To build from source:
 
-## Usage
+```sh
+git clone --recurse-submodules https://github.com/ompphp/ompphp.git
+cd ompphp
+task component          # Linux x64
+task component:windows  # Windows x64 from Linux
+```
+
+## Quick start
 
 Create `gamemode.php` in the server directory:
 
@@ -63,75 +59,71 @@ Handlers::playerConnect(static function (int $playerId): void {
 });
 ```
 
-Native API methods are grouped under `Omp\Api`:
+Generated static APIs live under `Omp\Api`, event helpers under `Omp\Event`, and constants under `Omp\Constant`. See [`examples/`](examples) for complete usage.
+
+## Component callables
+
+Components register scripting functions through the CAPI callable registry. ompphp discovers and invokes them without exposing native pointers:
 
 ```php
-use Omp\Api\Dialog;
-use Omp\Api\Player;
-use Omp\Constant\DialogStyle;
+use Omp\Component\Components;
 
-Player::setHealth($playerId, 100.0);
-Dialog::show($playerId, 1, DialogStyle::MSG_BOX, 'Hello', 'Welcome!', 'OK', '');
+$component = Components::require('0x1234567890abcdef');
+$object = $component->callables()->require('CreateDynamicObject')->invokeNamed([
+    'model' => 19379,
+    'x' => 100.0,
+    'y' => 200.0,
+    'z' => 10.0,
+]);
 ```
 
-Common open.mp values are grouped under `Omp\Constant`. For example, `WeaponID::M4` is `31`, and key flags can be combined with `Keys::FIRE | Keys::AIM`.
+Component-specific Composer packages can wrap these calls with typed PHP APIs, serving the same role as Pawn include packages. Components that do not register callables are not dynamically invokable.
 
-See [`examples`](examples) for commands, dialogs, and complete gamemodes.
+Calls run synchronously on the main thread. `UnsignedInteger` preserves full `uint64` values and `EntityValue` represents typed entity IDs.
+
+## Network API
+
+```php
+use Omp\Network\Network;
+use Omp\Network\NetworkMessage;
+use Omp\Network\NetworkResult;
+
+$subscription = Network::onIncomingRpc(
+    24,
+    static fn (NetworkMessage $message): NetworkResult => NetworkResult::CONTINUE,
+);
+
+Network::sendRpc(playerId: 7, rpcId: 24, data: "\x01\x02");
+$subscription->cancel();
+```
+
+Subscriptions are synchronous and main-runtime only. Handlers may replace the buffer or return `DROP`; nested callbacks are rejected. Passing `null` as the player ID broadcasts.
 
 ## Configuration
 
-| Variable | Default | Description |
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `OMPPHP_ENTRY` | `gamemode.php` | Gamemode entry file, relative to the server directory |
-| `OMPPHP_SLOW_CALLBACK_MS` | Disabled | Log callbacks that take at least this many milliseconds; set it to a positive number |
-| `OMPPHP_WORKERS` | `4` | Number of isolated PHP workers |
-| `OMPPHP_TASK_QUEUE` | `256` | Pending tasks allowed per worker |
-| `OMPPHP_NATIVE_WORKERS` | `8` | Go workers used by native async providers |
-| `OMPPHP_NATIVE_QUEUE` | `256` | Pending native async operations |
-| `OMPPHP_COMPLETION_QUEUE` | `512` | Results waiting for the main runtime |
-| `OMPPHP_ACTOR_MAILBOX` | `64` | Pending calls allowed per actor |
-| `OMPPHP_TRANSFER_MAX_DEPTH` | `32` | Maximum nested payload depth |
-| `OMPPHP_TRANSFER_MAX_BYTES` | `1048576` | Maximum payload size in bytes |
-| `OMPPHP_WORKER_BOOTSTRAP` | `vendor/autoload.php` beside the entry file | Composer autoloader used by workers |
+| `OMPPHP_ENTRY` | `gamemode.php` | Gamemode entry file |
+| `OMPPHP_SLOW_CALLBACK_MS` | disabled | Slow callback logging threshold |
+| `OMPPHP_WORKERS` / `OMPPHP_TASK_QUEUE` | `4` / `256` | PHP worker count and queue |
+| `OMPPHP_NATIVE_WORKERS` / `OMPPHP_NATIVE_QUEUE` | `8` / `256` | Native async workers and queue |
+| `OMPPHP_COMPLETION_QUEUE` | `512` | Pending main-runtime results |
+| `OMPPHP_ACTOR_MAILBOX` | `64` | Calls queued per actor |
+| `OMPPHP_TRANSFER_MAX_DEPTH` / `OMPPHP_TRANSFER_MAX_BYTES` | `32` / `1048576` | Cross-runtime payload limits |
+| `OMPPHP_NETWORK_MAX_BYTES` / `OMPPHP_NETWORK_MAX_SUBSCRIPTIONS` | `1048576` / `1024` | Network bridge limits |
+| `OMPPHP_CALLABLE_MAX_OUTPUT_BYTES` | `1048576` | Callable string/byte result buffer |
+| `OMPPHP_WORKER_BOOTSTRAP` | `vendor/autoload.php` | Worker Composer bootstrap |
 
-Gamemode state lives in one serialized PHP runtime. PHP tasks and actors use isolated Goro workers, while native async providers use a separate Go worker pool. Results return to the main runtime, and worker PHP cannot call open.mp directly.
-
-The runtime tracks callback dispatches, failures, total execution time, and the longest callback internally.
+The main gamemode runtime is serialized. Workers and actors are isolated and cannot call open.mp directly.
 
 ## Development
 
-Run the Go and PHP checks:
-
 ```sh
-task check
+task check     # Go and PHP checks
+task e2e       # official open.mp Linux x86-64 integration test
+task generate  # regenerate C, Go, and PHP bindings
 ```
 
-Build and test the component in an official open.mp Linux server:
+The standalone CAPI and metadata are pinned in `third_party/omp-capi`. Use `task component:host` for a native-architecture diagnostic build.
 
-```sh
-task e2e
-```
-
-The end-to-end test downloads a pinned x86-64 artifact from the open.mp build workflow. To test another workflow run, set both `OPENMP_WORKFLOW_RUN` and `OPENMP_ARTIFACT_SHA256`; the download fails if the checksum doesn't match.
-
-Use `task component:host` for a native-architecture diagnostic build.
-
-Go integrations can register cancellable background operations with `async.Register`. PHP starts them through `Async::native()` and receives the result through a `Future` on the main runtime.
-
-### Generated bindings
-
-The open.mp API snapshot is in `third_party/openmp-capi`. Curated gamemode values not included in the CAPI metadata are in `tools/codegen/data/gamemode_constants.json`.
-
-Regenerate the Go, C, and PHP bindings after changing either source:
-
-```sh
-task generate
-```
-
-Commit the generated files with the source changes.
-
-### Vendored Goro
-
-Goro and its dependencies are pinned in `go.mod` and checked into `vendor/`. The vendored copy includes a small portability layer because Goro assumes a Unix filesystem in several places.
-
-See [Updating vendored Goro](docs/vendor-goro.md) for the patch and upgrade process.
+Goro is pinned and vendored with portability patches; see [Updating vendored Goro](docs/vendor-goro.md).

@@ -44,7 +44,7 @@ jobs:
       - run: go run ./tools/codegen
       - run: git diff --exit-code -- sdk/src/Internal/api_generated.php sdk/src/Api sdk/src/Event/Events.php sdk/src/Event/Handlers.php sdk/src/Constant cmd/component/native_generated.go cmd/component/native_generated.h cmd/component/events_generated.go cmd/component/events_generated.h
       - run: go test -race -short -timeout=3m ./...
-      - run: GOARCH=amd64 CGO_ENABLED=1 go build -mod=vendor -buildmode=c-shared -o build/ompphp.so ./cmd/component
+      - run: task component
       - run: ./tests/e2e-openmp.sh --skip-build
 
   windows-e2e:
@@ -67,6 +67,16 @@ jobs:
         with:
           msystem: MINGW64
           install: mingw-w64-x86_64-gcc
+      - uses: egor-tensin/setup-clang@v2
+        with:
+          version: latest
+          platform: x64
+      - shell: pwsh
+        run: |
+          cmake -S third_party/omp-capi -B build/capi/windows -A x64 -T ClangCL -DOMP_CAPI_BUILD_TESTS=OFF
+          if ($LASTEXITCODE -ne 0) { throw "CAPI configure failed with exit code $LASTEXITCODE" }
+          cmake --build build/capi/windows --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw "CAPI build failed with exit code $LASTEXITCODE" }
       - shell: pwsh
         run: |
           $env:CGO_ENABLED = '1'
@@ -76,5 +86,8 @@ jobs:
           go test ./internal/runtime ./tools/sdkpack
           if ($LASTEXITCODE -ne 0) { throw "Windows tests failed with exit code $LASTEXITCODE" }
           go build -mod=vendor -buildmode=c-shared -o build/ompphp.dll ./cmd/component
+          $cxx = Join-Path '${{ steps.msys2.outputs.msys2-location }}' 'mingw64\bin\g++.exe'
+          & $cxx -std=c++17 -shared -Ithird_party/omp-capi/lib/open.mp-sdk/include -Ithird_party/omp-capi/lib/open.mp-sdk/lib/glm -Ithird_party/omp-capi/lib/open.mp-sdk/lib/robin-hood-hashing/src/include -Ithird_party/omp-capi/lib/open.mp-sdk/lib/span-lite/include -Ithird_party/omp-capi/lib/open.mp-sdk/lib/string-view-lite/include -Ithird_party/omp-capi/lib/open.mp-capi/include -DGLM_FORCE_QUAT_DATA_WXYZ -DGLM_FORCE_SSE2 -Dnssv_CONFIG_SELECT_STRING_VIEW=nssv_STRING_VIEW_NONSTD -Dspan_CONFIG_SELECT_SPAN=span_SPAN_NONSTD tests/fixtures/callable_component.cpp -o build/ompphp-callable-fixture.dll
+          if ($LASTEXITCODE -ne 0) { throw "Callable fixture build failed with exit code $LASTEXITCODE" }
       - shell: pwsh
         run: ./tests/e2e-openmp.ps1

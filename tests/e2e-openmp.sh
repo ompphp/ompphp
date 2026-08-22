@@ -25,6 +25,35 @@ unzip -q "${test_dir}/openmp.zip" -d "${test_dir}"
 tar -xJf "${test_dir}/open.mp-linux-x86_64-.tar.xz" -C "${test_dir}"
 server_dir="${test_dir}/Server"
 cp "${workspace_dir}/build/ompphp.so" "${server_dir}/components/ompphp.so"
+g++ -std=c++17 -shared -fPIC \
+    -I"${workspace_dir}/third_party/omp-capi/lib/open.mp-sdk/include" \
+    -I"${workspace_dir}/third_party/omp-capi/lib/open.mp-sdk/lib/glm" \
+    -I"${workspace_dir}/third_party/omp-capi/lib/open.mp-sdk/lib/robin-hood-hashing/src/include" \
+    -I"${workspace_dir}/third_party/omp-capi/lib/open.mp-sdk/lib/span-lite/include" \
+    -I"${workspace_dir}/third_party/omp-capi/lib/open.mp-sdk/lib/string-view-lite/include" \
+    -I"${workspace_dir}/third_party/omp-capi/lib/open.mp-capi/include" \
+    -DGLM_FORCE_QUAT_DATA_WXYZ -DGLM_FORCE_SSE2 -Dnssv_CONFIG_SELECT_STRING_VIEW=nssv_STRING_VIEW_NONSTD -Dspan_CONFIG_SELECT_SPAN=span_SPAN_NONSTD \
+    "${workspace_dir}/tests/fixtures/callable_component.cpp" -ldl \
+    -o "${server_dir}/components/ompphp-callable-fixture.so"
+
+set +e
+(
+    cd "${server_dir}"
+    timeout --signal=INT --kill-after=2s 2s ./omp-server
+) >"${test_dir}/stock-capi.log" 2>&1
+stock_status=$?
+set -e
+if [[ ${stock_status} -ne 0 && ${stock_status} -ne 124 ]]; then
+    cat "${test_dir}/stock-capi.log"
+    exit "${stock_status}"
+fi
+grep -F "incompatible CAPI component" "${test_dir}/stock-capi.log"
+if grep -F "Successfully loaded component ompphp (" "${test_dir}/stock-capi.log"; then
+    echo "ompphp unexpectedly loaded with the stock open.mp CAPI" >&2
+    exit 1
+fi
+
+cp "${workspace_dir}/build/capi/linux/components/\$CAPI.so" "${server_dir}/components/\$CAPI.so"
 cp "${workspace_dir}/tests/fixtures/e2e/gamemode.php" "${server_dir}/gamemode.php"
 cp "${workspace_dir}/tests/fixtures/e2e/composer.json" "${server_dir}/composer.json"
 cp -R "${workspace_dir}/tests/fixtures/e2e/src" "${server_dir}/src"
@@ -33,7 +62,12 @@ mkdir -p "${server_dir}/packages"
     cd "${workspace_dir}"
     go run ./tools/sdkpack -version 0.1.0-beta.1 -out "${server_dir}/packages"
 )
-composer install --working-dir="${server_dir}" --no-dev --no-interaction --no-progress
+if command -v composer >/dev/null 2>&1; then
+    composer install --working-dir="${server_dir}" --no-dev --no-interaction --no-progress
+else
+    docker run --rm -u "$(id -u):$(id -g)" -v "${server_dir}:/app" -w /app composer:2 \
+        install --no-dev --no-interaction --no-progress
+fi
 
 set +e
 (
@@ -48,9 +82,11 @@ if [[ ${server_status} -ne 0 && ${server_status} -ne 124 ]]; then
     exit "${server_status}"
 fi
 
-grep -F "Successfully loaded component ompphp" "${test_dir}/server.log"
+grep -F "Successfully loaded component ompphp (" "${test_dir}/server.log"
 grep -F "OMPPHP_E2E_READY" "${test_dir}/server.log"
 grep -F "OMPPHP_E2E_SDK" "${test_dir}/server.log"
+grep -F "OMPPHP_E2E_EXTENDED_CAPI" "${test_dir}/server.log"
+grep -F "OMPPHP_E2E_CALLABLES" "${test_dir}/server.log" || { cat "${test_dir}/server.log"; exit 1; }
 grep -F "PHP handler for Tick failed:" "${test_dir}/server.log"
 grep -F "RuntimeException: OMPPHP_E2E_EXPECTED_FAILURE" "${test_dir}/server.log"
 grep -F "Stack trace:" "${test_dir}/server.log"

@@ -26,12 +26,26 @@ tasks:
       - go build -o build/ompphp{{exeExt}} ./cmd/ompphp
 
   component:
-    desc: Build the x86-64 Linux component
+    desc: Build the required CAPI and ompphp components for x86-64 Linux
+    deps: [capi]
     env:
       CGO_ENABLED: '1'
       GOARCH: amd64
     cmds:
       - go build -mod=vendor -buildmode=c-shared -o build/ompphp.so ./cmd/component
+
+  capi:
+    desc: Build the required standalone CAPI component for x86-64 Linux
+    cmds:
+      - cmake -S third_party/omp-capi -B build/capi/linux -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DOMP_CAPI_BUILD_TESTS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - cmake --build build/capi/linux --parallel
+
+  capi:windows:
+    desc: Build the required standalone CAPI component for x86-64 Windows on Windows
+    platforms: [windows]
+    cmds:
+      - cmake -S third_party/omp-capi -B build/capi/windows -A x64 -T ClangCL -DOMP_CAPI_BUILD_TESTS=OFF
+      - cmake --build build/capi/windows --config Release --parallel
 
   component:windows:
     desc: Cross-build the x86-64 Windows component

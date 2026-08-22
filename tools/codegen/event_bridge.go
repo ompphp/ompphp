@@ -43,7 +43,7 @@ extern bool OMPPHPDispatchGeneratedEvent(char* name, struct OMPPHPEventArg* args
 package main
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../third_party/openmp-capi/include
+#cgo CFLAGS: -I${SRCDIR}/../../third_party/omp-capi/lib/open.mp-capi/include
 #include "ompcapi.h"
 #include "events_generated.h"
 */
