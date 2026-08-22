@@ -23,7 +23,11 @@ try {
     $stockStdout = Join-Path $testDir 'stock-stdout.log'
     $stockStderr = Join-Path $testDir 'stock-stderr.log'
     $stockProcess = Start-Process -FilePath (Join-Path $serverDir 'omp-server.exe') -WorkingDirectory $serverDir -RedirectStandardOutput $stockStdout -RedirectStandardError $stockStderr -PassThru
-    Start-Sleep -Seconds 2
+    $stockDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+        Start-Sleep -Milliseconds 250
+        $stockLog = ((Get-Content -Raw $stockStdout -ErrorAction SilentlyContinue), (Get-Content -Raw $stockStderr -ErrorAction SilentlyContinue)) -join "`n"
+    } while (!$stockProcess.HasExited -and !$stockLog.Contains('incompatible CAPI component') -and [DateTime]::UtcNow -lt $stockDeadline)
     if (!$stockProcess.HasExited) {
         Stop-Process -Id $stockProcess.Id -Force
         $stockProcess.WaitForExit()
