@@ -92,6 +92,7 @@ jobs:
           $fixtureArgs = @(
             '/std:c++17'
             '/LD'
+            '/EHsc'
             '/Ithird_party/omp-capi/lib/open.mp-sdk/include'
             '/Ithird_party/omp-capi/lib/open.mp-sdk/lib/glm'
             '/Ithird_party/omp-capi/lib/open.mp-sdk/lib/robin-hood-hashing/src/include'
