@@ -30,6 +30,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: arduino/setup-task@v2
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
@@ -73,7 +74,7 @@ jobs:
           platform: x64
       - shell: pwsh
         run: |
-          cmake -S third_party/omp-capi -B build/capi/windows -A x64 -T ClangCL -DOMP_CAPI_BUILD_TESTS=OFF
+          cmake -S third_party/omp-capi -B build/capi/windows -A x64 -T ClangCL -DOMP_CAPI_BUILD_TESTS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           if ($LASTEXITCODE -ne 0) { throw "CAPI configure failed with exit code $LASTEXITCODE" }
           cmake --build build/capi/windows --config Release --parallel
           if ($LASTEXITCODE -ne 0) { throw "CAPI build failed with exit code $LASTEXITCODE" }
