@@ -87,23 +87,23 @@ jobs:
           go test ./internal/runtime ./tools/sdkpack
           if ($LASTEXITCODE -ne 0) { throw "Windows tests failed with exit code $LASTEXITCODE" }
           go build -mod=vendor -buildmode=c-shared -o build/ompphp.dll ./cmd/component
-          $cxx = Join-Path '${{ steps.msys2.outputs.msys2-location }}' 'mingw64\bin\g++.exe'
+          if ($LASTEXITCODE -ne 0) { throw "Windows component build failed with exit code $LASTEXITCODE" }
+          $cxx = (Get-Command clang-cl.exe -ErrorAction Stop).Source
           $fixtureArgs = @(
-            '-std=c++17'
-            '-shared'
-            '-Ithird_party/omp-capi/lib/open.mp-sdk/include'
-            '-Ithird_party/omp-capi/lib/open.mp-sdk/lib/glm'
-            '-Ithird_party/omp-capi/lib/open.mp-sdk/lib/robin-hood-hashing/src/include'
-            '-Ithird_party/omp-capi/lib/open.mp-sdk/lib/span-lite/include'
-            '-Ithird_party/omp-capi/lib/open.mp-sdk/lib/string-view-lite/include'
-            '-Ithird_party/omp-capi/lib/open.mp-capi/include'
-            '-DGLM_FORCE_QUAT_DATA_WXYZ'
-            '-DGLM_FORCE_SSE2'
-            '-Dnssv_CONFIG_SELECT_STRING_VIEW=nssv_STRING_VIEW_NONSTD'
-            '-Dspan_CONFIG_SELECT_SPAN=span_SPAN_NONSTD'
+            '/std:c++17'
+            '/LD'
+            '/Ithird_party/omp-capi/lib/open.mp-sdk/include'
+            '/Ithird_party/omp-capi/lib/open.mp-sdk/lib/glm'
+            '/Ithird_party/omp-capi/lib/open.mp-sdk/lib/robin-hood-hashing/src/include'
+            '/Ithird_party/omp-capi/lib/open.mp-sdk/lib/span-lite/include'
+            '/Ithird_party/omp-capi/lib/open.mp-sdk/lib/string-view-lite/include'
+            '/Ithird_party/omp-capi/lib/open.mp-capi/include'
+            '/DGLM_FORCE_QUAT_DATA_WXYZ'
+            '/DGLM_FORCE_SSE2'
+            '/Dnssv_CONFIG_SELECT_STRING_VIEW=nssv_STRING_VIEW_NONSTD'
+            '/Dspan_CONFIG_SELECT_SPAN=span_SPAN_NONSTD'
             'tests/fixtures/callable_component.cpp'
-            '-o'
-            'build/ompphp-callable-fixture.dll'
+            '/Fe:build/ompphp-callable-fixture.dll'
           )
           & $cxx @fixtureArgs
           if ($LASTEXITCODE -ne 0) { throw "Callable fixture build failed with exit code $LASTEXITCODE" }
