@@ -44,7 +44,7 @@ tasks:
     desc: Build the required standalone CAPI component for x86-64 Windows on Windows
     platforms: [windows]
     cmds:
-      - cmake -S third_party/omp-capi -B build/capi/windows -A x64 -T ClangCL -DOMP_CAPI_BUILD_TESTS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - cmake -S third_party/omp-capi -B build/capi/windows -A x64 -T ClangCL -DOMP_CAPI_BUILD_TESTS=OFF "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
       - cmake --build build/capi/windows --config Release --parallel
 
   component:windows:
